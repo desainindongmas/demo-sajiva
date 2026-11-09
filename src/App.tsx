@@ -46,6 +46,9 @@ export default function App(){
  const [payAmount,setPayAmount]=useState("");
  const [captchaToken,setCaptchaToken]=useState<string|null>(null);
  const captchaRef=useRef<HCaptcha>(null);
+ const orderRequestKey=useRef<string|null>(null);
+ const paymentRequestKey=useRef<string|null>(null);
+ const [syncStatus,setSyncStatus]=useState("Menyiapkan koneksi...");
  async function refresh(s:Session){
   if(!client)return;
   const [m,t,o,oi,p]=await Promise.all([
@@ -77,14 +80,17 @@ export default function App(){
  async function order(){await withBusy(async()=>{
   if(!client||!session||!selectedMenu)throw Error("Pilih menu terlebih dahulu.");
   if(channel==="dine_in"&&!selectedTable)throw Error("Untuk dine-in, pilih meja terlebih dahulu.");
-  const r=await client.rpc("create_demo_order_v2",{p_org:session.organization_id,p_branch:session.branch_id,p_table:channel==="dine_in"?selectedTable:null,p_channel:channel,p_notes:orderNotes,p_items:[{menu_item_id:selectedMenu,quantity}],p_request_key:crypto.randomUUID()});
-  if(r.error)throw r.error;await refresh(session);setNotice("Pesanan dummy berhasil dibuat.");
+  if(!Number.isInteger(quantity)||quantity<1||quantity>50)throw Error("Jumlah porsi harus 1 sampai 50.");
+  if(!orderRequestKey.current)orderRequestKey.current=crypto.randomUUID();
+  const r=await client.rpc("create_demo_order_v2",{p_org:session.organization_id,p_branch:session.branch_id,p_table:channel==="dine_in"?selectedTable:null,p_channel:channel,p_notes:orderNotes,p_items:[{menu_item_id:selectedMenu,quantity}],p_request_key:orderRequestKey.current});
+  if(r.error)throw r.error;orderRequestKey.current=null;await refresh(session);setNotice("Pesanan dummy berhasil dibuat.");
  })}
  async function payment(){await withBusy(async()=>{
   if(!client||!session||!payOrder)throw Error("Pilih pesanan.");
   const amount=Number(payAmount);if(!Number.isFinite(amount)||amount<=0)throw Error("Masukkan jumlah pembayaran yang valid.");
-  const r=await client.rpc("complete_demo_payment",{p_org:session.organization_id,p_order:payOrder,p_amount:amount,p_method:payMethod,p_request_key:crypto.randomUUID()});
-  if(r.error)throw r.error;await refresh(session);setNotice("Pembayaran tunai SIMULASI tercatat.");setPayAmount("");
+  if(!paymentRequestKey.current)paymentRequestKey.current=crypto.randomUUID();
+  const r=await client.rpc("complete_demo_payment",{p_org:session.organization_id,p_order:payOrder,p_amount:amount,p_method:payMethod,p_request_key:paymentRequestKey.current});
+  if(r.error)throw r.error;paymentRequestKey.current=null;await refresh(session);setNotice("Pembayaran SIMULASI tercatat.");setPayAmount("");
  })}
  async function addItem(){await withBusy(async()=>{
   if(!client||!session||!targetOrder||!selectedMenu)throw Error("Pilih pesanan dan menu untuk penambahan.");
@@ -124,13 +130,36 @@ export default function App(){
   })().catch(e=>{if(active)setError(readableError(e));});
   return()=>{active=false;};
  },[]);
- useEffect(()=>{if(!session||!client)return;const interval=setInterval(()=>{refresh(session).catch(()=>{})},8000);return()=>clearInterval(interval)},[session]);
+ useEffect(()=>{
+  if(!session||!client)return;
+  const supabase=client;
+  let active=true;
+  let refreshPending=false;
+  const sync=()=>{
+    if(!active||refreshPending)return;
+    refreshPending=true;
+    refresh(session).catch(e=>{if(active)setError(readableError(e));}).finally(()=>{refreshPending=false;});
+  };
+  const channel=supabase.channel("sajiva-operations-"+session.organization_id);
+  for(const table of ["orders","order_items","dining_tables","payments"]){
+    channel.on("postgres_changes",{event:"*",schema:"public",table,filter:"organization_id=eq."+session.organization_id},()=>sync());
+  }
+  channel.subscribe((status)=>{
+    if(!active)return;
+    if(status==="SUBSCRIBED"){setSyncStatus("Realtime aktif");sync();}
+    else if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"||status==="CLOSED")setSyncStatus("Sinkronisasi berkala");
+  });
+  const interval=setInterval(sync,20000);
+  const foreground=()=>{if(document.visibilityState==="visible")sync();};
+  document.addEventListener("visibilitychange",foreground);
+  return()=>{active=false;clearInterval(interval);document.removeEventListener("visibilitychange",foreground);void supabase.removeChannel(channel);};
+ },[session]);
  return <main><header><strong>sajiva</strong><span>DEMO · DATA DUMMY</span></header>
  <section className="hero"><p>Restaurant Operations Management</p><h1>Satu Sistem, Semua Terkendali.</h1><p>Simulasi operasional restoran. Tidak ada uang sungguhan yang diproses.</p></section>
  <section><h2>Ruang Demo</h2><p>Pilih peran publik untuk melihat alur simulasi.</p>
  <div className="roles">{roles.map(r=><button type="button" key={r} className={role===r?"active":""} onClick={()=>setRole(r)}>{r}</button>)}</div>
  <article><h3>{role}</h3>{session&&role==="Owner"&&<p className="feature-help">Untuk mencoba Delivery, Catatan Pesanan, dan Tambah ke Pesanan Aktif, pilih role <button type="button" onClick={()=>setRole("Waiter")}>Waiter</button> atau Manager/Cashier.</p>}{!session?<><p>Buat sesi untuk mencoba data simulasi yang terisolasi.</p>{hcaptchaSitekey && <div className="captcha-area"><HCaptcha ref={captchaRef} sitekey={hcaptchaSitekey} onVerify={(token)=>setCaptchaToken(token)} onExpire={()=>setCaptchaToken(null)} onError={(err)=>{setCaptchaToken(null);setError("hCaptcha gagal: "+readableError(err))}}/></div>}<button type="button" disabled={busy || !captchaToken} onClick={start}>{busy?"Menyiapkan...":"Buat sesi demo"}</button></>:<>
- <p>Session: <code>{session.share_code}</code> · Dataset hanya untuk simulasi.</p>
+ <p>Session: <code>{session.share_code}</code> · Dataset hanya untuk simulasi. <span className="sync-status" role="status">{syncStatus}</span></p>
  {(role==="Waiter"||role==="Cashier"||role==="Manager")&&<div className="demo-grid"><div><h4>Pesanan · Dine-in / Takeaway / Delivery</h4><p className="feature-help">Pilih jenis pesanan, isi catatan, atau tambah menu ke pesanan yang belum dibayar.</p>
  <label htmlFor="menu">Menu</label><select id="menu" value={selectedMenu} onChange={e=>setSelectedMenu(e.target.value)}><option value="">Pilih menu</option>{menus.map(m=><option key={m.id} value={m.id}>{m.name} · {rupiah(m.price)}</option>)}</select>
  <label htmlFor="channel">Jenis pesanan</label><select id="channel" value={channel} onChange={e=>{setChannel(e.target.value);setSelectedTable("");}}><option value="dine_in">Makan di tempat</option><option value="takeaway">Bungkus / Takeaway</option><option value="delivery">Pesan antar (manual)</option></select>
@@ -147,5 +176,5 @@ export default function App(){
  <h4>Pesanan simulasi</h4><ul>{orders.map(o=><li key={o.id}>{o.id.slice(0,8)} · {rupiah(o.total)} · {o.payment_status}</li>)}</ul>
  <button disabled={busy} onClick={()=>withBusy(()=>refresh(session))}>Perbarui data</button>
  </>}</article>{error&&<p role="alert" className="error">{error}</p>}{notice&&<p role="status" className="success">{notice}</p>}
- </section><footer>SAJIVA · Tidak menerima pembayaran nyata · G1.2 · Cloudflare Sync Check · Delivery + Catatan + Tambah Menu</footer></main>;
+ </section><footer>SAJIVA · Tidak menerima pembayaran nyata · G1.3 · Realtime operasional · Semua pembayaran dummy</footer></main>;
 }
