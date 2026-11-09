@@ -1,0 +1,33 @@
+name: Sajiva Live Smoke Test
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 1 * * *"
+  push:
+    branches: [main]
+    paths:
+      - "tests/live/**"
+      - ".github/workflows/live-smoke.yml"
+
+jobs:
+  live-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+      - name: Check live Sajiva page
+        run: npx playwright test tests/live --reporter=line
+        env:
+          SAJIVA_LIVE_URL: https://demo-sajiva.pages.dev
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: sajiva-live-failure
+          path: test-results/
+          retention-days: 7
