@@ -19,6 +19,8 @@ type RecipeLine = {id:string;menu_item_id:string;ingredient_id:string;qty:number
 type InventoryEvent = {id:string;ingredient_id:string;event_type:string;quantity_change:number;reason:string;created_at:string};
 type ProductionRecipe = {id:string;output_ingredient_id:string;input_ingredient_id:string;input_qty:number;output_qty:number};
 type ProductionRun = {id:string;output_ingredient_id:string;output_qty:number;total_input_cost:number;created_at:string};
+type Financial = {order_id:string;billed_revenue:number;received_dummy:number;receivable_dummy:number;cost_snapshot_total:number;estimated_gross_margin:number;channel:string};
+type DailyKpi = {report_date:string;order_count:number;cancelled_orders:number;billed_revenue:number;received_dummy:number;receivable_dummy:number;estimated_cogs:number;estimated_gross_margin:number};
 const roles:Role[]=["Owner","Manager","Cashier","Waiter","Kitchen"];
 const url=import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const key=import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -57,6 +59,9 @@ export default function App(){
  const [inventoryEvents,setInventoryEvents]=useState<InventoryEvent[]>([]);
  const [productionRecipes,setProductionRecipes]=useState<ProductionRecipe[]>([]);
  const [productionRuns,setProductionRuns]=useState<ProductionRun[]>([]);
+ const [financials,setFinancials]=useState<Financial[]>([]);
+ const [dailyKpis,setDailyKpis]=useState<DailyKpi[]>([]);
+ const [guidedStep,setGuidedStep]=useState(0);
  const [skuName,setSkuName]=useState("");
  const [skuUnit,setSkuUnit]=useState("porsi");
  const [skuStage,setSkuStage]=useState("wip");
@@ -106,7 +111,7 @@ export default function App(){
  const [syncStatus,setSyncStatus]=useState("Menyiapkan koneksi...");
  async function refresh(s:Session){
   if(!client)return;
-  const [m,t,o,oi,p,cr,jt,al,ing,sup,pur,hpp,rec,ev,pr,run]=await Promise.all([
+  const [m,t,o,oi,p,cr,jt,al,ing,sup,pur,hpp,rec,ev,pr,run,fin,kpi]=await Promise.all([
    client.from("menu_items").select("id,name,price").eq("organization_id",s.organization_id).order("name"),
    client.from("dining_tables").select("id,name,status").eq("organization_id",s.organization_id).order("name"),
    client.from("orders").select("id,total,payment_status,status,table_id").eq("organization_id",s.organization_id).order("created_at",{ascending:false}),
@@ -122,10 +127,12 @@ export default function App(){
    client.from("recipes").select("id,menu_item_id,ingredient_id,qty").eq("organization_id",s.organization_id),
    client.from("demo_inventory_events").select("id,ingredient_id,event_type,quantity_change,reason,created_at").eq("organization_id",s.organization_id).order("created_at",{ascending:false}).limit(20),
    client.from("demo_production_recipes").select("id,output_ingredient_id,input_ingredient_id,input_qty,output_qty").eq("organization_id",s.organization_id),
-   client.from("demo_production_runs").select("id,output_ingredient_id,output_qty,total_input_cost,created_at").eq("organization_id",s.organization_id).order("created_at",{ascending:false}).limit(10)
+   client.from("demo_production_runs").select("id,output_ingredient_id,output_qty,total_input_cost,created_at").eq("organization_id",s.organization_id).order("created_at",{ascending:false}).limit(10),
+   client.from("demo_order_financials").select("order_id,billed_revenue,received_dummy,receivable_dummy,cost_snapshot_total,estimated_gross_margin,channel").eq("organization_id",s.organization_id).limit(300),
+   client.from("demo_owner_daily_kpis").select("report_date,order_count,cancelled_orders,billed_revenue,received_dummy,receivable_dummy,estimated_cogs,estimated_gross_margin").eq("organization_id",s.organization_id).order("report_date",{ascending:false}).limit(30)
   ]);
-  for(const x of [m,t,o,oi,p,cr,jt,al,ing,sup,pur,hpp,rec,ev,pr,run]) if(x.error) throw x.error;
-  setMenus((m.data||[]) as Menu[]);setTables((t.data||[]) as Table[]);setOrders((o.data||[]) as Order[]);setItems((oi.data||[]) as Item[]);setPayments((p.data||[]) as Payment[]);setCancelRequests((cr.data||[]) as CancelRequest[]);setJoinedTables((jt.data||[]) as JoinedTable[]);setAllocations((al.data||[]) as ItemAllocation[]);setStocks((ing.data||[]) as IngredientStock[]);setSuppliers((sup.data||[]) as Supplier[]);setPurchases((pur.data||[]) as Purchase[]);setMenuHpp((hpp.data||[]) as MenuHpp[]);setRecipeLines((rec.data||[]) as RecipeLine[]);setInventoryEvents((ev.data||[]) as InventoryEvent[]);setProductionRecipes((pr.data||[]) as ProductionRecipe[]);setProductionRuns((run.data||[]) as ProductionRun[]);
+  for(const x of [m,t,o,oi,p,cr,jt,al,ing,sup,pur,hpp,rec,ev,pr,run,fin,kpi]) if(x.error) throw x.error;
+  setMenus((m.data||[]) as Menu[]);setTables((t.data||[]) as Table[]);setOrders((o.data||[]) as Order[]);setItems((oi.data||[]) as Item[]);setPayments((p.data||[]) as Payment[]);setCancelRequests((cr.data||[]) as CancelRequest[]);setJoinedTables((jt.data||[]) as JoinedTable[]);setAllocations((al.data||[]) as ItemAllocation[]);setStocks((ing.data||[]) as IngredientStock[]);setSuppliers((sup.data||[]) as Supplier[]);setPurchases((pur.data||[]) as Purchase[]);setMenuHpp((hpp.data||[]) as MenuHpp[]);setRecipeLines((rec.data||[]) as RecipeLine[]);setInventoryEvents((ev.data||[]) as InventoryEvent[]);setProductionRecipes((pr.data||[]) as ProductionRecipe[]);setProductionRuns((run.data||[]) as ProductionRun[]);setFinancials((fin.data||[]) as Financial[]);setDailyKpis((kpi.data||[]) as DailyKpi[]);
  }
  async function withBusy(op:()=>Promise<void>){setBusy(true);setError("");setNotice("");try{await op()}catch(e){setError(readableError(e))}finally{setBusy(false)}}
  async function start(){await withBusy(async()=>{
@@ -390,9 +397,22 @@ export default function App(){
  <h4>Estimasi HPP menu</h4>{menuHpp.map(x=><div className="bill-line" key={x.menu_item_id}><span>{x.menu_name}{x.recipe_components===0?" · resep belum lengkap":""}</span><span>HPP {rupiah(Number(x.estimated_hpp))} · Margin kotor {rupiah(Number(x.gross_margin))}</span></div>)}
  <p className="feature-help">Pembelian dummy terakhir: {purchases.length} · Total pembelian simulasi {rupiah(purchases.reduce((n,p)=>n+Number(p.total),0))} (maksimal 20 transaksi terbaru).</p>
  </div>}
+ {(role==="Owner"||role==="Manager")&&<div className="kitchen"><h4>G3–G4 · Keuangan Simulasi & Owner Analytics</h4><p className="feature-help">Seluruh transaksi adalah dummy. Margin di bawah merupakan estimasi berbasis cost snapshot bahan pada waktu order, belum memperhitungkan gaji, sewa, utilitas, penyusutan, atau biaya lain; bukan laba bersih.</p>
+ <div className="demo-grid">
+ <div><strong>Total tagihan</strong><h3>{rupiah(financials.reduce((n,x)=>n+Number(x.billed_revenue),0))}</h3></div>
+ <div><strong>Pembayaran simulasi</strong><h3>{rupiah(financials.reduce((n,x)=>n+Number(x.received_dummy),0))}</h3></div>
+ <div><strong>Piutang simulasi</strong><h3>{rupiah(financials.reduce((n,x)=>n+Number(x.receivable_dummy),0))}</h3></div>
+ <div><strong>Estimasi margin kotor</strong><h3>{rupiah(financials.reduce((n,x)=>n+Number(x.estimated_gross_margin),0))}</h3></div>
+ </div><h4>Kinerja per tanggal (maks. 30 hari transaksi)</h4>
+ {dailyKpis.map(d=><div className="bill-line" key={d.report_date}><span><strong>{d.report_date}</strong> · {d.order_count} pesanan · {d.cancelled_orders} dibatalkan</span><span>Terima {rupiah(Number(d.received_dummy))} · Margin indikatif {rupiah(Number(d.estimated_gross_margin))}</span></div>)}
+ <h4>Ringkasan kanal</h4>{["dine_in","takeaway","delivery"].map(c=><div className="bill-line" key={c}><span>{c==="dine_in"?"Dine-in":c==="takeaway"?"Takeaway":"Delivery"}</span><strong>{financials.filter(f=>f.channel===c).length} pesanan · {rupiah(financials.filter(f=>f.channel===c).reduce((n,f)=>n+Number(f.billed_revenue),0))}</strong></div>)}
+ </div>}
+ {session&&<div className="kitchen"><h4>G5 · Guided Demo Sajiva</h4><p className="feature-help">Panduan demonstrasi satu alur restoran. Gunakan tombol berikut untuk melihat peran dan modul yang relevan.</p>
+ {(()=>{const steps:[Role,string,string][]=[["Owner","Dashboard","Lihat ringkasan Owner, persediaan, estimasi HPP, dan hasil usaha dummy."],["Waiter","Buat Pesanan","Buat pesanan dine-in, takeaway, atau delivery dengan menu dan catatan."],["Kitchen","Proses Dapur","Terima tiket dan ubah status dari menunggu, memasak, siap, hingga disajikan."],["Cashier","Pembayaran","Catat pembayaran dummy, split bill, dan cek sisa tagihan."],["Manager","Kontrol Operasional","Cek perpindahan meja, approval pembatalan, opname, dan produksi."]];const step=steps[guidedStep]||steps[0];return <><p><strong>{guidedStep+1} / {steps.length}: {step[1]}</strong></p><p>{step[2]}</p><div className="roles"><button disabled={guidedStep===0} onClick={()=>{const n=Math.max(0,guidedStep-1);setGuidedStep(n);setRole(steps[n][0]);}}>Sebelumnya</button><button onClick={()=>{const n=(guidedStep+1)%steps.length;setGuidedStep(n);setRole(steps[n][0]);}}>{guidedStep===steps.length-1?"Ulangi demo":"Lanjut langkah"}</button><button onClick={()=>setRole(step[0])}>Buka role {step[0]}</button></div></>})()}
+ </div>}
  {(role==="Owner"||role==="Manager")&&<div className="kitchen"><h4>Ringkasan bisnis simulasi</h4><p>Pesanan: {orders.length} · Item dapur aktif: {items.filter(i=>!["served","cancelled"].includes(i.status)).length}</p><p>Pembayaran dummy diterima: {rupiah(payments.filter(p=>p.status==="simulated").reduce((s,p)=>s+Number(p.amount),0))}</p></div>}
  <h4>Pesanan simulasi</h4><ul>{orders.map(o=><li key={o.id}>{o.id.slice(0,8)} · {rupiah(o.total)} · {o.payment_status}</li>)}</ul>
  <button disabled={busy} onClick={()=>withBusy(()=>refresh(session))}>Perbarui data</button>
  </>}</article>{error&&<p role="alert" className="error">{error}</p>}{notice&&<p role="status" className="success">{notice}</p>}
- </section><footer>SAJIVA · Tidak menerima pembayaran nyata · G2.3 · Produksi WIP & Barang Jadi · Demo</footer></main>;
+ </section><footer>SAJIVA · Tidak menerima pembayaran nyata · G5 · Keuangan Simulasi / Analytics / Guided Demo</footer></main>;
 }
