@@ -2,10 +2,10 @@ import { test, expect } from "@playwright/test";
 
 const baseURL = process.env.SAJIVA_LIVE_URL || "https://demo-sajiva.pages.dev";
 
-test("Sajiva live serves the expected G1.4 build and role selector", async ({ page }) => {
+test("Sajiva live serves the expected G1.5 build and role selector", async ({ page }) => {
   const response = await page.goto(baseURL, { waitUntil: "domcontentloaded" });
   expect(response?.status()).toBe(200);
-  await expect(page.getByText("Versi situs: G1.4", { exact: false })).toBeVisible();
+  await expect(page.getByText("Versi situs: G1.5", { exact: false })).toBeVisible();
   await expect(page.getByRole("button", { name: "Waiter" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Kitchen" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Manager" })).toBeVisible();
