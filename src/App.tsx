@@ -166,7 +166,7 @@ export default function App(){
     refresh(session).catch(e=>{if(active)setError(readableError(e));}).finally(()=>{refreshPending=false;});
   };
   const channel=supabase.channel("sajiva-operations-"+session.organization_id);
-  for(const table of ["orders","order_items","dining_tables","payments"]){
+  for(const table of ["orders","order_items","dining_tables","payments","demo_cancel_requests"]){
     channel.on("postgres_changes",{event:"*",schema:"public",table,filter:"organization_id=eq."+session.organization_id},()=>sync());
   }
   channel.subscribe((status)=>{
