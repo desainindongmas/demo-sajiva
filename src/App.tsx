@@ -69,7 +69,7 @@ export default function App(){
      if(auth.error)throw auth.error;
    }
    const r=await client.rpc("start_demo");if(r.error)throw r.error;
-   const s=r.data as Session;setSession(s);await refresh(s);setNotice("Sesi simulasi dibuat. Seluruh data bersifat dummy.");
+   const s=r.data as Session;setSession(s);sessionStorage.setItem("sajiva_demo_session",JSON.stringify(s));await refresh(s);setNotice("Sesi simulasi dibuat. Seluruh data bersifat dummy.");
  })}
  async function order(){await withBusy(async()=>{
   if(!client||!session||!selectedMenu)throw Error("Pilih menu terlebih dahulu.");
@@ -94,6 +94,24 @@ export default function App(){
  })}
  const paid=(id:string)=>payments.filter(p=>p.order_id===id&&p.status==="simulated").reduce((sum,p)=>sum+Number(p.amount),0);
  const labels:Record<string,string>={waiting:"Menunggu",preparing:"Memasak",ready:"Siap",served:"Disajikan",available:"Tersedia",occupied:"Terisi",payment:"Menunggu bayar",cleaning:"Perlu dibersihkan"};
+ useEffect(()=>{
+  if(!client)return;
+  const raw=sessionStorage.getItem("sajiva_demo_session");
+  if(!raw)return;
+  let prior:Session;
+  try{prior=JSON.parse(raw) as Session;}catch{sessionStorage.removeItem("sajiva_demo_session");return;}
+  let active=true;
+  (async()=>{
+    const current=await client.auth.getSession();
+    if(!current.data.session){sessionStorage.removeItem("sajiva_demo_session");return;}
+    const check=await client.from("demo_sessions").select("id,organization_id,expires_at").eq("id",prior.session_id).eq("organization_id",prior.organization_id).maybeSingle();
+    if(!active)return;
+    if(check.error||!check.data||new Date(check.data.expires_at).getTime()<Date.now()){sessionStorage.removeItem("sajiva_demo_session");return;}
+    setSession(prior);
+    await refresh(prior);
+  })().catch(e=>{if(active)setError(readableError(e));});
+  return()=>{active=false;};
+ },[]);
  useEffect(()=>{if(!session||!client)return;const interval=setInterval(()=>{refresh(session).catch(()=>{})},8000);return()=>clearInterval(interval)},[session]);
  return <main><header><strong>sajiva</strong><span>DEMO · DATA DUMMY</span></header>
  <section className="hero"><p>Restaurant Operations Management</p><h1>Satu Sistem, Semua Terkendali.</h1><p>Simulasi operasional restoran. Tidak ada uang sungguhan yang diproses.</p></section>
@@ -113,5 +131,5 @@ export default function App(){
  <h4>Pesanan simulasi</h4><ul>{orders.map(o=><li key={o.id}>{o.id.slice(0,8)} · {rupiah(o.total)} · {o.payment_status}</li>)}</ul>
  <button disabled={busy} onClick={()=>withBusy(()=>refresh(session))}>Perbarui data</button>
  </>}</article>{error&&<p role="alert" className="error">{error}</p>}{notice&&<p role="status" className="success">{notice}</p>}
- </section><footer>SAJIVA · Tidak menerima pembayaran nyata · G0 Prototype</footer></main>;
+ </section><footer>SAJIVA · Tidak menerima pembayaran nyata · G1 Prototype</footer></main>;
 }
