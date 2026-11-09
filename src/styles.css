@@ -15,3 +15,5 @@
 
 .sync-status{display:inline-block;border:1px solid #badbcc;background:#e9f7ee;color:#075746;padding:4px 9px;border-radius:999px;font-size:11px;font-weight:600;margin-left:8px}
 .feature-help{font-size:13px;line-height:1.6;color:#426558}
+
+.kitchen select,.kitchen input{display:block;width:100%;padding:12px;margin:6px 0 14px;border:1px solid #aacabe;border-radius:9px;background:#fff;color:#113f35}.kitchen label{display:block;font-size:13px;font-weight:600;color:#426558;margin-top:12px}.kitchen .feature-help{color:#527164;font-size:13px}.kitchen button{margin:5px 5px 5px 0}.kitchen button:disabled{opacity:.55}
