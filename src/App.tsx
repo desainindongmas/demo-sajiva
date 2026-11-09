@@ -147,5 +147,5 @@ export default function App(){
  <h4>Pesanan simulasi</h4><ul>{orders.map(o=><li key={o.id}>{o.id.slice(0,8)} · {rupiah(o.total)} · {o.payment_status}</li>)}</ul>
  <button disabled={busy} onClick={()=>withBusy(()=>refresh(session))}>Perbarui data</button>
  </>}</article>{error&&<p role="alert" className="error">{error}</p>}{notice&&<p role="status" className="success">{notice}</p>}
- </section><footer>SAJIVA · Tidak menerima pembayaran nyata · G1.2 · Build 2026-11-09 · Delivery + Catatan + Tambah Menu</footer></main>;
+ </section><footer>SAJIVA · Tidak menerima pembayaran nyata · G1.2 · Cloudflare Sync Check · Delivery + Catatan + Tambah Menu</footer></main>;
 }
