@@ -12,6 +12,16 @@ const key=import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 const hcaptchaSitekey=import.meta.env.VITE_HCAPTCHA_SITEKEY as string | undefined;
 const client:SupabaseClient | null = url && key ? createClient(url,key) : null;
 const rupiah=(n:number)=>new Intl.NumberFormat("id-ID",{style:"currency",currency:"IDR",maximumFractionDigits:0}).format(n);
+function readableError(e:unknown):string {
+ if(e instanceof Error) return e.message;
+ if(typeof e==="string") return e;
+ if(e && typeof e==="object"){
+  const v=e as Record<string,unknown>;
+  const msg=[v.message,v.error_description,v.details,v.hint,v.code].filter(x=>typeof x==="string" && x!=="").join(" · ");
+  return msg || "Kesalahan tidak dikenal. Periksa koneksi Supabase dan konfigurasi hCaptcha.";
+ }
+ return String(e);
+}
 export default function App(){
  const [role,setRole]=useState<Role>("Owner");
  const [session,setSession]=useState<Session|null>(null);
@@ -37,11 +47,12 @@ export default function App(){
   for(const x of [m,t,o]) if(x.error) throw x.error;
   setMenus((m.data||[]) as Menu[]);setTables((t.data||[]) as Table[]);setOrders((o.data||[]) as Order[]);
  }
- async function withBusy(op:()=>Promise<void>){setBusy(true);setError("");setNotice("");try{await op()}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}}
+ async function withBusy(op:()=>Promise<void>){setBusy(true);setError("");setNotice("");try{await op()}catch(e){setError(readableError(e))}finally{setBusy(false)}}
  async function start(){await withBusy(async()=>{
    if(!client)throw Error("Konfigurasi Supabase belum diisi pada environment Cloudflare atau .env.local.");
-   const {data:userInfo}=await client.auth.getUser();
-   if(!userInfo.user){
+   const {data:sessionInfo,error:sessionError}=await client.auth.getSession();
+   if(sessionError) throw sessionError;
+   if(!sessionInfo.session){
      if(!hcaptchaSitekey) throw Error("hCaptcha Sitekey belum dikonfigurasi.");
      if(!captchaToken) throw Error("Selesaikan hCaptcha terlebih dahulu.");
      const auth=await client.auth.signInAnonymously({options:{captchaToken}});
@@ -68,7 +79,7 @@ export default function App(){
  <section className="hero"><p>Restaurant Operations Management</p><h1>Satu Sistem, Semua Terkendali.</h1><p>Simulasi operasional restoran. Tidak ada uang sungguhan yang diproses.</p></section>
  <section><h2>Ruang Demo</h2><p>Pilih peran publik untuk melihat alur simulasi.</p>
  <div className="roles">{roles.map(r=><button type="button" key={r} className={role===r?"active":""} onClick={()=>setRole(r)}>{r}</button>)}</div>
- <article><h3>{role}</h3>{!session?<><p>Buat sesi untuk mencoba data simulasi yang terisolasi.</p>{hcaptchaSitekey && <div className="captcha-area"><HCaptcha ref={captchaRef} sitekey={hcaptchaSitekey} onVerify={(token)=>setCaptchaToken(token)} onExpire={()=>setCaptchaToken(null)} onError={()=>setCaptchaToken(null)}/></div>}<button type="button" disabled={busy || (!captchaToken && !session)} onClick={start}>{busy?"Menyiapkan...":"Buat sesi demo"}</button></>:<>
+ <article><h3>{role}</h3>{!session?<><p>Buat sesi untuk mencoba data simulasi yang terisolasi.</p>{hcaptchaSitekey && <div className="captcha-area"><HCaptcha ref={captchaRef} sitekey={hcaptchaSitekey} onVerify={(token)=>setCaptchaToken(token)} onExpire={()=>setCaptchaToken(null)} onError={(err)=>{setCaptchaToken(null);setError("hCaptcha gagal: "+readableError(err))}}/></div>}<button type="button" disabled={busy || !captchaToken} onClick={start}>{busy?"Menyiapkan...":"Buat sesi demo"}</button></>:<>
  <p>Session: <code>{session.share_code}</code> · Dataset hanya untuk simulasi.</p>
  <div className="demo-grid"><div><h4>Menu & pesanan</h4>
  <label htmlFor="menu">Menu</label><select id="menu" value={selectedMenu} onChange={e=>setSelectedMenu(e.target.value)}><option value="">Pilih menu</option>{menus.map(m=><option key={m.id} value={m.id}>{m.name} · {rupiah(m.price)}</option>)}</select>
