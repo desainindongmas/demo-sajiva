@@ -6,7 +6,7 @@ type Session = { organization_id:string;branch_id:string;session_id:string;share
 type Menu = {id:string;name:string;price:number};
 type Table = {id:string;name:string;status:string};
 type Order = {id:string;total:number;payment_status:string;status:string;table_id:string|null};
-type Item = {id:string;order_id:string;menu_item_id:string;quantity:number;status:string};
+type Item = {id:string;order_id:string;menu_item_id:string;quantity:number;unit_price:number;status:string};
 type Payment = {id:string;order_id:string;amount:number;status:string};
 type CancelRequest = {id:string;order_item_id:string;reason:string;status:string;created_at:string};
 type JoinedTable = {id:string;order_id:string;table_id:string};
@@ -65,7 +65,7 @@ export default function App(){
    client.from("menu_items").select("id,name,price").eq("organization_id",s.organization_id).order("name"),
    client.from("dining_tables").select("id,name,status").eq("organization_id",s.organization_id).order("name"),
    client.from("orders").select("id,total,payment_status,status,table_id").eq("organization_id",s.organization_id).order("created_at",{ascending:false}),
-   client.from("order_items").select("id,order_id,menu_item_id,quantity,status").eq("organization_id",s.organization_id),
+   client.from("order_items").select("id,order_id,menu_item_id,quantity,unit_price,status").eq("organization_id",s.organization_id),
    client.from("payments").select("id,order_id,amount,status").eq("organization_id",s.organization_id),
    client.from("demo_cancel_requests").select("id,order_item_id,reason,status,created_at").eq("organization_id",s.organization_id).order("created_at",{ascending:false}),
    client.from("demo_order_tables").select("id,order_id,table_id").eq("organization_id",s.organization_id)
@@ -219,7 +219,7 @@ export default function App(){
  <label htmlFor="bill-order">Nomor pesanan / tagihan</label><select id="bill-order" value={billOrderId} onChange={e=>setBillOrderId(e.target.value)}><option value="">Pilih tagihan</option>{orders.map(o=><option key={o.id} value={o.id}>#{o.id.slice(0,8)} · {rupiah(Number(o.total))}</option>)}</select>
  {orders.filter(o=>o.id===billOrderId).map(o=><div className="bill-details" key={o.id}>
  <p><strong>Tagihan #{o.id.slice(0,8)}</strong> · Meja: {[tables.find(t=>t.id===o.table_id)?.name||"Takeaway",...joinedTables.filter(x=>x.order_id===o.id).map(x=>tables.find(t=>t.id===x.table_id)?.name||"Meja")].join(" + ")}</p>
- {items.filter(i=>i.order_id===o.id&&i.status!=="cancelled").map(i=><div className="bill-line" key={i.id}><span>{i.quantity}× {menus.find(m=>m.id===i.menu_item_id)?.name||"Menu"}</span><strong>{rupiah(Number(i.quantity)*(Number(menus.find(m=>m.id===i.menu_item_id)?.price)||0))}</strong></div>)}
+ {items.filter(i=>i.order_id===o.id&&i.status!=="cancelled").map(i=><div className="bill-line" key={i.id}><span>{i.quantity}× {menus.find(m=>m.id===i.menu_item_id)?.name||"Menu"}</span><strong>{rupiah(Number(i.quantity)*Number(i.unit_price))}</strong></div>)}
  <div className="bill-line"><strong>Total tagihan</strong><strong>{rupiah(Number(o.total))}</strong></div>
  <div className="bill-line"><span>Sudah dibayar (dummy)</span><strong>{rupiah(paid(o.id))}</strong></div>
  <div className="bill-line"><strong>Sisa pembayaran</strong><strong>{rupiah(Math.max(0,Number(o.total)-paid(o.id)))}</strong></div>
