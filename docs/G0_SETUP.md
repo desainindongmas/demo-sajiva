@@ -34,3 +34,12 @@ Use the temporary `pages.dev` hostname. Custom `.my.id` domain comes later.
 - Tenant isolation cross-account test.
 - Concurrent orders and idempotency tests.
 - Public hosting deploy / verified integration.
+
+## hCaptcha
+1. hCaptcha website: copy your **Sitekey** (public) and your **Secret** (private).
+2. Supabase Authentication > Attack Protection: enable CAPTCHA, provider hCaptcha, enter secret there, and save.
+3. Supabase Authentication > Providers: enable Anonymous Sign-Ins.
+4. In local env and Cloudflare Pages build variables set `VITE_HCAPTCHA_SITEKEY` to the public sitekey only.
+5. Never commit the hCaptcha secret to frontend code, environment prefixed `VITE_`, or GitHub.
+6. Ensure the actual Cloudflare Pages domain is registered as an allowed hostname in hCaptcha site settings.
+7. Anonymous sign-in uses the CAPTCHA token. The public demo is not ready until this is end-to-end tested.
