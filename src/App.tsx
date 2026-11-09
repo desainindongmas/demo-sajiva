@@ -57,6 +57,9 @@ export default function App(){
  const [inventoryEvents,setInventoryEvents]=useState<InventoryEvent[]>([]);
  const [productionRecipes,setProductionRecipes]=useState<ProductionRecipe[]>([]);
  const [productionRuns,setProductionRuns]=useState<ProductionRun[]>([]);
+ const [skuName,setSkuName]=useState("");
+ const [skuUnit,setSkuUnit]=useState("porsi");
+ const [skuStage,setSkuStage]=useState("wip");
  const [productionOutput,setProductionOutput]=useState("");
  const [productionInput,setProductionInput]=useState("");
  const [productionInputQty,setProductionInputQty]=useState("1");
@@ -172,6 +175,11 @@ export default function App(){
   if(!client||!session)throw Error("Sesi tidak tersedia");
   const result=await client.rpc("mark_demo_table_clean",{p_org:session.organization_id,p_table:tableId});
   if(result.error)throw result.error;await refresh(session);setNotice("Meja sudah tersedia.");
+ })}
+ async function createSku(){await withBusy(async()=>{
+  if(!client||!session)throw Error("Sesi demo tidak aktif.");
+  const r=await client.rpc("create_demo_inventory_sku",{p_org:session.organization_id,p_name:skuName,p_unit:skuUnit,p_stage:skuStage});
+  if(r.error)throw r.error;setSkuName("");await refresh(session);setNotice("Master stok baru berhasil dibuat.");
  })}
  async function configureProduction(){await withBusy(async()=>{
   if(!client||!session||!productionOutput||!productionInput)throw Error("Pilih bahan input dan output.");
@@ -341,6 +349,9 @@ export default function App(){
  {role==="Manager"&&<><p className="feature-help">Pada demo publik, persetujuan menggunakan identitas sesi Owner yang terautentikasi. Role Switcher bukan autentikasi karyawan.</p>{cancelRequests.filter(r=>r.status==="pending").map(r=><div className="kitchen-ticket" key={r.id}><span>{menus.find(m=>m.id===items.find(i=>i.id===r.order_item_id)?.menu_item_id)?.name||"Item"} · {r.reason}</span><button disabled={busy} onClick={()=>decideCancel(r.id,true)}>Setujui</button><button disabled={busy} onClick={()=>decideCancel(r.id,false)}>Tolak</button></div>)}</>}
  {cancelRequests.filter(r=>r.status==="pending").length===0&&<p className="feature-help">Belum ada permintaan yang menunggu.</p>}</div>}
  {(role==="Owner"||role==="Manager")&&<div className="kitchen"><h4>G2.3 · Produksi WIP & Barang Jadi</h4><p className="feature-help">Simulasi konversi stok: bahan input berkurang, output bertambah, dan biaya rata-rata output diperbarui. Output harus ditandai WIP/barang jadi dalam master data.</p>
+ <h4>Tambah master stok</h4><label htmlFor="sku-name">Nama produk/bahan</label><input id="sku-name" value={skuName} onChange={e=>setSkuName(e.target.value)} placeholder="Contoh: Ayam ungkep siap masak"/>
+ <label htmlFor="sku-unit">Satuan</label><input id="sku-unit" value={skuUnit} onChange={e=>setSkuUnit(e.target.value)}/>
+ <label htmlFor="sku-stage">Tahap bahan</label><select id="sku-stage" value={skuStage} onChange={e=>setSkuStage(e.target.value)}><option value="raw">Mentah</option><option value="wip">Setengah jadi / WIP</option><option value="finished">Barang jadi</option></select><button disabled={busy||skuName.trim().length<2} onClick={createSku}>Tambah master stok</button>
  <label htmlFor="production-output">Output WIP/barang jadi</label><select id="production-output" value={productionOutput} onChange={e=>{setProductionOutput(e.target.value);productionKey.current=null;}}><option value="">Pilih output</option>{stocks.filter(i=>i.inventory_stage==="wip"||i.inventory_stage==="finished").map(i=><option key={i.id} value={i.id}>{i.name} · {i.inventory_stage}</option>)}</select>
  {stocks.every(i=>i.inventory_stage==="raw")&&<p className="feature-help">Belum ada stok WIP/barang jadi pada dataset. Penambahan master output akan diselesaikan pada penyempurnaan G2.3.</p>}
  <label htmlFor="production-input">Input bahan</label><select id="production-input" value={productionInput} onChange={e=>setProductionInput(e.target.value)}><option value="">Pilih input</option>{stocks.filter(i=>i.id!==productionOutput).map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select>
