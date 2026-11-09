@@ -21,6 +21,7 @@ type ProductionRecipe = {id:string;output_ingredient_id:string;input_ingredient_
 type ProductionRun = {id:string;output_ingredient_id:string;output_qty:number;total_input_cost:number;created_at:string};
 type Financial = {order_id:string;billed_revenue:number;received_dummy:number;receivable_dummy:number;cost_snapshot_total:number;estimated_gross_margin:number;channel:string};
 type DailyKpi = {report_date:string;order_count:number;cancelled_orders:number;billed_revenue:number;received_dummy:number;receivable_dummy:number;estimated_cogs:number;estimated_gross_margin:number};
+type ProfitDaily = {report_date:string;order_count:number;billed_revenue:number;received_dummy:number;estimated_cogs:number;estimated_gross_margin:number;operating_expenses:number;estimated_operating_result:number};
 const roles:Role[]=["Owner","Manager","Cashier","Waiter","Kitchen"];
 const url=import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const key=import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -61,6 +62,11 @@ export default function App(){
  const [productionRuns,setProductionRuns]=useState<ProductionRun[]>([]);
  const [financials,setFinancials]=useState<Financial[]>([]);
  const [dailyKpis,setDailyKpis]=useState<DailyKpi[]>([]);
+ const [profitDaily,setProfitDaily]=useState<ProfitDaily[]>([]);
+ const [expenseCategory,setExpenseCategory]=useState("utilities");
+ const [expenseDescription,setExpenseDescription]=useState("");
+ const [expenseAmount,setExpenseAmount]=useState("100000");
+ const expenseKey=useRef<string|null>(null);
  const [guidedStep,setGuidedStep]=useState(0);
  const [skuName,setSkuName]=useState("");
  const [skuUnit,setSkuUnit]=useState("porsi");
@@ -111,7 +117,7 @@ export default function App(){
  const [syncStatus,setSyncStatus]=useState("Menyiapkan koneksi...");
  async function refresh(s:Session){
   if(!client)return;
-  const [m,t,o,oi,p,cr,jt,al,ing,sup,pur,hpp,rec,ev,pr,run,fin,kpi]=await Promise.all([
+  const [m,t,o,oi,p,cr,jt,al,ing,sup,pur,hpp,rec,ev,pr,run,fin,kpi,profit]=await Promise.all([
    client.from("menu_items").select("id,name,price").eq("organization_id",s.organization_id).order("name"),
    client.from("dining_tables").select("id,name,status").eq("organization_id",s.organization_id).order("name"),
    client.from("orders").select("id,total,payment_status,status,table_id").eq("organization_id",s.organization_id).order("created_at",{ascending:false}),
@@ -129,10 +135,11 @@ export default function App(){
    client.from("demo_production_recipes").select("id,output_ingredient_id,input_ingredient_id,input_qty,output_qty").eq("organization_id",s.organization_id),
    client.from("demo_production_runs").select("id,output_ingredient_id,output_qty,total_input_cost,created_at").eq("organization_id",s.organization_id).order("created_at",{ascending:false}).limit(10),
    client.from("demo_order_financials").select("order_id,billed_revenue,received_dummy,receivable_dummy,cost_snapshot_total,estimated_gross_margin,channel").eq("organization_id",s.organization_id).limit(300),
-   client.from("demo_owner_daily_kpis").select("report_date,order_count,cancelled_orders,billed_revenue,received_dummy,receivable_dummy,estimated_cogs,estimated_gross_margin").eq("organization_id",s.organization_id).order("report_date",{ascending:false}).limit(30)
+   client.from("demo_owner_daily_kpis").select("report_date,order_count,cancelled_orders,billed_revenue,received_dummy,receivable_dummy,estimated_cogs,estimated_gross_margin").eq("organization_id",s.organization_id).order("report_date",{ascending:false}).limit(30),
+   client.from("demo_owner_profit_daily").select("report_date,order_count,billed_revenue,received_dummy,estimated_cogs,estimated_gross_margin,operating_expenses,estimated_operating_result").eq("organization_id",s.organization_id).order("report_date",{ascending:false}).limit(30)
   ]);
-  for(const x of [m,t,o,oi,p,cr,jt,al,ing,sup,pur,hpp,rec,ev,pr,run,fin,kpi]) if(x.error) throw x.error;
-  setMenus((m.data||[]) as Menu[]);setTables((t.data||[]) as Table[]);setOrders((o.data||[]) as Order[]);setItems((oi.data||[]) as Item[]);setPayments((p.data||[]) as Payment[]);setCancelRequests((cr.data||[]) as CancelRequest[]);setJoinedTables((jt.data||[]) as JoinedTable[]);setAllocations((al.data||[]) as ItemAllocation[]);setStocks((ing.data||[]) as IngredientStock[]);setSuppliers((sup.data||[]) as Supplier[]);setPurchases((pur.data||[]) as Purchase[]);setMenuHpp((hpp.data||[]) as MenuHpp[]);setRecipeLines((rec.data||[]) as RecipeLine[]);setInventoryEvents((ev.data||[]) as InventoryEvent[]);setProductionRecipes((pr.data||[]) as ProductionRecipe[]);setProductionRuns((run.data||[]) as ProductionRun[]);setFinancials((fin.data||[]) as Financial[]);setDailyKpis((kpi.data||[]) as DailyKpi[]);
+  for(const x of [m,t,o,oi,p,cr,jt,al,ing,sup,pur,hpp,rec,ev,pr,run,fin,kpi,profit]) if(x.error) throw x.error;
+  setMenus((m.data||[]) as Menu[]);setTables((t.data||[]) as Table[]);setOrders((o.data||[]) as Order[]);setItems((oi.data||[]) as Item[]);setPayments((p.data||[]) as Payment[]);setCancelRequests((cr.data||[]) as CancelRequest[]);setJoinedTables((jt.data||[]) as JoinedTable[]);setAllocations((al.data||[]) as ItemAllocation[]);setStocks((ing.data||[]) as IngredientStock[]);setSuppliers((sup.data||[]) as Supplier[]);setPurchases((pur.data||[]) as Purchase[]);setMenuHpp((hpp.data||[]) as MenuHpp[]);setRecipeLines((rec.data||[]) as RecipeLine[]);setInventoryEvents((ev.data||[]) as InventoryEvent[]);setProductionRecipes((pr.data||[]) as ProductionRecipe[]);setProductionRuns((run.data||[]) as ProductionRun[]);setFinancials((fin.data||[]) as Financial[]);setDailyKpis((kpi.data||[]) as DailyKpi[]);setProfitDaily((profit.data||[]) as ProfitDaily[]);
  }
  async function withBusy(op:()=>Promise<void>){setBusy(true);setError("");setNotice("");try{await op()}catch(e){setError(readableError(e))}finally{setBusy(false)}}
  async function start(){await withBusy(async()=>{
@@ -182,6 +189,13 @@ export default function App(){
   if(!client||!session)throw Error("Sesi tidak tersedia");
   const result=await client.rpc("mark_demo_table_clean",{p_org:session.organization_id,p_table:tableId});
   if(result.error)throw result.error;await refresh(session);setNotice("Meja sudah tersedia.");
+ })}
+ async function recordExpense(){await withBusy(async()=>{
+  if(!client||!session)throw Error("Sesi demo tidak aktif.");
+  if(!expenseDescription.trim()||Number(expenseAmount)<=0)throw Error("Isi deskripsi dan nominal biaya.");
+  if(!expenseKey.current)expenseKey.current=crypto.randomUUID();
+  const r=await client.rpc("record_demo_operating_expense",{p_org:session.organization_id,p_branch:session.branch_id,p_category:expenseCategory,p_description:expenseDescription,p_amount:Number(expenseAmount),p_expense_date:new Date().toISOString().slice(0,10),p_key:expenseKey.current});
+  if(r.error)throw r.error;expenseKey.current=null;setExpenseDescription("");await refresh(session);setNotice("Biaya operasional dummy berhasil dicatat.");
  })}
  async function createSku(){await withBusy(async()=>{
   if(!client||!session)throw Error("Sesi demo tidak aktif.");
@@ -403,7 +417,14 @@ export default function App(){
  <div><strong>Pembayaran simulasi</strong><h3>{rupiah(financials.reduce((n,x)=>n+Number(x.received_dummy),0))}</h3></div>
  <div><strong>Piutang simulasi</strong><h3>{rupiah(financials.reduce((n,x)=>n+Number(x.receivable_dummy),0))}</h3></div>
  <div><strong>Estimasi margin kotor</strong><h3>{rupiah(financials.reduce((n,x)=>n+Number(x.estimated_gross_margin),0))}</h3></div>
- </div><h4>Kinerja per tanggal (maks. 30 hari transaksi)</h4>
+ </div>
+ <h4>Catat biaya operasional dummy</h4><label htmlFor="expense-category">Kategori</label><select id="expense-category" value={expenseCategory} onChange={e=>{setExpenseCategory(e.target.value);expenseKey.current=null;}}><option value="rent">Sewa</option><option value="payroll">Gaji</option><option value="utilities">Listrik, air, utilitas</option><option value="marketing">Pemasaran</option><option value="logistics">Logistik</option><option value="maintenance">Pemeliharaan</option><option value="other">Lain-lain</option></select>
+ <label htmlFor="expense-description">Keterangan</label><input id="expense-description" value={expenseDescription} onChange={e=>{setExpenseDescription(e.target.value);expenseKey.current=null;}} placeholder="Contoh: biaya listrik dummy"/>
+ <label htmlFor="expense-amount">Jumlah (Rp)</label><input id="expense-amount" type="number" min="1" value={expenseAmount} onChange={e=>{setExpenseAmount(e.target.value);expenseKey.current=null;}}/>
+ <button disabled={busy||expenseDescription.trim().length<3} onClick={recordExpense}>Catat biaya dummy</button>
+ <h4>Hasil operasional terestimasi</h4>{profitDaily.map(d=><div key={d.report_date} className="bill-line"><span>{d.report_date}: margin kotor {rupiah(Number(d.estimated_gross_margin))} − biaya {rupiah(Number(d.operating_expenses))}</span><strong>{rupiah(Number(d.estimated_operating_result))}</strong></div>)}
+ <p className="feature-help">Estimasi ini bukan pembukuan akuntansi lengkap atau laba bersih yang sudah diaudit; angka biaya hanya yang dicatat dalam simulasi.</p>
+ <h4>Kinerja per tanggal (maks. 30 hari transaksi)</h4>
  {dailyKpis.map(d=><div className="bill-line" key={d.report_date}><span><strong>{d.report_date}</strong> · {d.order_count} pesanan · {d.cancelled_orders} dibatalkan</span><span>Terima {rupiah(Number(d.received_dummy))} · Margin indikatif {rupiah(Number(d.estimated_gross_margin))}</span></div>)}
  <h4>Ringkasan kanal</h4>{["dine_in","takeaway","delivery"].map(c=><div className="bill-line" key={c}><span>{c==="dine_in"?"Dine-in":c==="takeaway"?"Takeaway":"Delivery"}</span><strong>{financials.filter(f=>f.channel===c).length} pesanan · {rupiah(financials.filter(f=>f.channel===c).reduce((n,f)=>n+Number(f.billed_revenue),0))}</strong></div>)}
  </div>}
@@ -414,5 +435,5 @@ export default function App(){
  <h4>Pesanan simulasi</h4><ul>{orders.map(o=><li key={o.id}>{o.id.slice(0,8)} · {rupiah(o.total)} · {o.payment_status}</li>)}</ul>
  <button disabled={busy} onClick={()=>withBusy(()=>refresh(session))}>Perbarui data</button>
  </>}</article>{error&&<p role="alert" className="error">{error}</p>}{notice&&<p role="status" className="success">{notice}</p>}
- </section><footer>SAJIVA · Tidak menerima pembayaran nyata · G5 · Keuangan Simulasi / Analytics / Guided Demo</footer></main>;
+ </section><footer>SAJIVA · Tidak menerima pembayaran nyata · G5 · Produksi / Financial Analytics / Guided Demo</footer></main>;
 }
