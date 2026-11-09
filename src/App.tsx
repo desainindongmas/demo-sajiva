@@ -1,0 +1,4 @@
+import { useState } from "react";
+type Role = "Owner" | "Manager" | "Cashier" | "Waiter" | "Kitchen";
+const roles:Role[]=["Owner","Manager","Cashier","Waiter","Kitchen"];
+export default function App(){const [role,setRole]=useState<Role>("Owner");return <main><header><strong>sajiva</strong><span>DEMO · DATA DUMMY</span></header><section className="hero"><p>Restaurant Operations Management</p><h1>Satu Sistem, Semua Terkendali.</h1><p>Simulasi alur rumah makan. Tidak untuk transaksi asli.</p></section><section><h2>Pilih peran</h2><div className="roles">{roles.map(r=><button key={r} className={role===r?"active":""} onClick={()=>setRole(r)}>{r}</button>)}</div><article><h3>{role}</h3><p>Pratinjau navigasi G0. Modul operasional akan dibangun pada gate berikutnya.</p></article></section><footer>SAJIVA · Tidak menerima pembayaran nyata</footer></main>}
