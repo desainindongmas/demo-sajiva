@@ -305,7 +305,7 @@ export default function App(){
     refresh(session).catch(e=>{if(active)setError(readableError(e));}).finally(()=>{refreshPending=false;});
   };
   const channel=supabase.channel("sajiva-operations-"+session.organization_id);
-  for(const table of ["orders","order_items","dining_tables","payments","demo_cancel_requests","demo_order_tables","demo_item_payment_allocations","ingredients","purchases","recipes","demo_inventory_events"]){
+  for(const table of ["orders","order_items","dining_tables","payments","demo_cancel_requests","demo_order_tables","demo_item_payment_allocations","ingredients","purchases","recipes","demo_inventory_events","demo_production_recipes","demo_production_runs","demo_operating_expenses"]){
     channel.on("postgres_changes",{event:"*",schema:"public",table,filter:"organization_id=eq."+session.organization_id},()=>sync());
   }
   channel.subscribe((status)=>{
