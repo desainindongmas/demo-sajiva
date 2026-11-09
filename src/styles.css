@@ -17,3 +17,5 @@
 .feature-help{font-size:13px;line-height:1.6;color:#426558}
 
 .kitchen select,.kitchen input{display:block;width:100%;padding:12px;margin:6px 0 14px;border:1px solid #aacabe;border-radius:9px;background:#fff;color:#113f35}.kitchen label{display:block;font-size:13px;font-weight:600;color:#426558;margin-top:12px}.kitchen .feature-help{color:#527164;font-size:13px}.kitchen button{margin:5px 5px 5px 0}.kitchen button:disabled{opacity:.55}
+
+.bill-panel .bill-details{margin-top:16px;padding:15px;border-radius:12px;background:#f7faf7;border:1px solid #d3e4d8}.bill-panel .bill-line{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:9px 0;border-bottom:1px solid #e0eae2}.bill-panel .bill-line:last-of-type{border-bottom:0}.bill-panel .bill-line span{flex:1}.bill-panel .bill-line strong{white-space:nowrap}@media(max-width:600px){.bill-panel .bill-line{font-size:13px}}
