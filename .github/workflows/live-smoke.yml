@@ -9,6 +9,8 @@ on:
     paths:
       - "tests/live/**"
       - ".github/workflows/live-smoke.yml"
+      - "package.json"
+      - "playwright.config.ts"
 
 jobs:
   live-smoke:
