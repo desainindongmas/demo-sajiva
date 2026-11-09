@@ -15,6 +15,8 @@ type IngredientStock = {id:string;name:string;unit:string;on_hand:number;reserve
 type Supplier = {id:string;name:string};
 type Purchase = {id:string;total:number;status:string;created_at:string};
 type MenuHpp = {menu_item_id:string;menu_name:string;sale_price:number;estimated_hpp:number;gross_margin:number;recipe_components:number};
+type RecipeLine = {id:string;menu_item_id:string;ingredient_id:string;qty:number};
+type InventoryEvent = {id:string;ingredient_id:string;event_type:string;quantity_change:number;reason:string;created_at:string};
 const roles:Role[]=["Owner","Manager","Cashier","Waiter","Kitchen"];
 const url=import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const key=import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -49,6 +51,16 @@ export default function App(){
  const [suppliers,setSuppliers]=useState<Supplier[]>([]);
  const [purchases,setPurchases]=useState<Purchase[]>([]);
  const [menuHpp,setMenuHpp]=useState<MenuHpp[]>([]);
+ const [recipeLines,setRecipeLines]=useState<RecipeLine[]>([]);
+ const [inventoryEvents,setInventoryEvents]=useState<InventoryEvent[]>([]);
+ const [recipeMenu,setRecipeMenu]=useState("");
+ const [recipeIngredient,setRecipeIngredient]=useState("");
+ const [recipeQty,setRecipeQty]=useState("1");
+ const [stockIngredient,setStockIngredient]=useState("");
+ const [stockAction,setStockAction]=useState("waste");
+ const [stockQuantity,setStockQuantity]=useState("");
+ const [stockReason,setStockReason]=useState("");
+ const stockRequestKey=useRef<string|null>(null);
  const [purchaseIngredient,setPurchaseIngredient]=useState("");
  const [purchaseSupplier,setPurchaseSupplier]=useState("");
  const [purchaseQty,setPurchaseQty]=useState("10");
@@ -81,7 +93,7 @@ export default function App(){
  const [syncStatus,setSyncStatus]=useState("Menyiapkan koneksi...");
  async function refresh(s:Session){
   if(!client)return;
-  const [m,t,o,oi,p,cr,jt,al,ing,sup,pur,hpp]=await Promise.all([
+  const [m,t,o,oi,p,cr,jt,al,ing,sup,pur,hpp,rec,ev]=await Promise.all([
    client.from("menu_items").select("id,name,price").eq("organization_id",s.organization_id).order("name"),
    client.from("dining_tables").select("id,name,status").eq("organization_id",s.organization_id).order("name"),
    client.from("orders").select("id,total,payment_status,status,table_id").eq("organization_id",s.organization_id).order("created_at",{ascending:false}),
@@ -93,10 +105,12 @@ export default function App(){
    client.from("ingredients").select("id,name,unit,on_hand,reserved,avg_cost,reorder_point").eq("organization_id",s.organization_id).order("name"),
    client.from("suppliers").select("id,name").eq("organization_id",s.organization_id).order("name"),
    client.from("purchases").select("id,total,status,created_at").eq("organization_id",s.organization_id).order("created_at",{ascending:false}).limit(20),
-   client.from("demo_menu_hpp").select("menu_item_id,menu_name,sale_price,estimated_hpp,gross_margin,recipe_components").eq("organization_id",s.organization_id)
+   client.from("demo_menu_hpp").select("menu_item_id,menu_name,sale_price,estimated_hpp,gross_margin,recipe_components").eq("organization_id",s.organization_id),
+   client.from("recipes").select("id,menu_item_id,ingredient_id,qty").eq("organization_id",s.organization_id),
+   client.from("demo_inventory_events").select("id,ingredient_id,event_type,quantity_change,reason,created_at").eq("organization_id",s.organization_id).order("created_at",{ascending:false}).limit(20)
   ]);
-  for(const x of [m,t,o,oi,p,cr,jt,al,ing,sup,pur,hpp]) if(x.error) throw x.error;
-  setMenus((m.data||[]) as Menu[]);setTables((t.data||[]) as Table[]);setOrders((o.data||[]) as Order[]);setItems((oi.data||[]) as Item[]);setPayments((p.data||[]) as Payment[]);setCancelRequests((cr.data||[]) as CancelRequest[]);setJoinedTables((jt.data||[]) as JoinedTable[]);setAllocations((al.data||[]) as ItemAllocation[]);setStocks((ing.data||[]) as IngredientStock[]);setSuppliers((sup.data||[]) as Supplier[]);setPurchases((pur.data||[]) as Purchase[]);setMenuHpp((hpp.data||[]) as MenuHpp[]);
+  for(const x of [m,t,o,oi,p,cr,jt,al,ing,sup,pur,hpp,rec,ev]) if(x.error) throw x.error;
+  setMenus((m.data||[]) as Menu[]);setTables((t.data||[]) as Table[]);setOrders((o.data||[]) as Order[]);setItems((oi.data||[]) as Item[]);setPayments((p.data||[]) as Payment[]);setCancelRequests((cr.data||[]) as CancelRequest[]);setJoinedTables((jt.data||[]) as JoinedTable[]);setAllocations((al.data||[]) as ItemAllocation[]);setStocks((ing.data||[]) as IngredientStock[]);setSuppliers((sup.data||[]) as Supplier[]);setPurchases((pur.data||[]) as Purchase[]);setMenuHpp((hpp.data||[]) as MenuHpp[]);setRecipeLines((rec.data||[]) as RecipeLine[]);setInventoryEvents((ev.data||[]) as InventoryEvent[]);
  }
  async function withBusy(op:()=>Promise<void>){setBusy(true);setError("");setNotice("");try{await op()}catch(e){setError(readableError(e))}finally{setBusy(false)}}
  async function start(){await withBusy(async()=>{
@@ -146,6 +160,25 @@ export default function App(){
   if(!client||!session)throw Error("Sesi tidak tersedia");
   const result=await client.rpc("mark_demo_table_clean",{p_org:session.organization_id,p_table:tableId});
   if(result.error)throw result.error;await refresh(session);setNotice("Meja sudah tersedia.");
+ })}
+ async function saveRecipe(){await withBusy(async()=>{
+  if(!client||!session||!recipeMenu||!recipeIngredient)throw Error("Pilih menu dan bahan resep.");
+  const qty=Number(recipeQty);if(!Number.isFinite(qty)||qty<=0||Math.round(qty*1000)!==qty*1000)throw Error("Jumlah resep wajib positif, maksimal 3 desimal.");
+  const r=await client.rpc("set_demo_recipe_line",{p_org:session.organization_id,p_menu:recipeMenu,p_ingredient:recipeIngredient,p_qty:qty});
+  if(r.error)throw r.error;await refresh(session);setNotice("Resep dan estimasi HPP diperbarui.");
+ })}
+ async function removeRecipe(ingredientId:string){await withBusy(async()=>{
+  if(!client||!session||!recipeMenu)throw Error("Pilih menu.");
+  const r=await client.rpc("remove_demo_recipe_line",{p_org:session.organization_id,p_menu:recipeMenu,p_ingredient:ingredientId});
+  if(r.error)throw r.error;await refresh(session);setNotice("Komponen resep dihapus.");
+ })}
+ async function updateStock(){await withBusy(async()=>{
+  if(!client||!session||!stockIngredient)throw Error("Pilih bahan baku.");
+  const qty=Number(stockQuantity);
+  if(!Number.isFinite(qty)||qty<0||Math.abs(Math.round(qty*1000)-qty*1000)>1e-7)throw Error("Jumlah stok harus nonnegatif, maksimal 3 desimal.");
+  if(!stockRequestKey.current)stockRequestKey.current=crypto.randomUUID();
+  const r=await client.rpc("record_demo_inventory_event",{p_org:session.organization_id,p_ingredient:stockIngredient,p_type:stockAction,p_quantity:qty,p_reason:stockReason,p_request_key:stockRequestKey.current});
+  if(r.error)throw r.error;stockRequestKey.current=null;setStockQuantity("");setStockReason("");await refresh(session);setNotice("Penyesuaian stok tercatat dalam ledger dan audit.");
  })}
  async function receivePurchase(){await withBusy(async()=>{
   if(!client||!session||!purchaseIngredient)throw Error("Pilih bahan baku.");
@@ -220,7 +253,7 @@ export default function App(){
     refresh(session).catch(e=>{if(active)setError(readableError(e));}).finally(()=>{refreshPending=false;});
   };
   const channel=supabase.channel("sajiva-operations-"+session.organization_id);
-  for(const table of ["orders","order_items","dining_tables","payments","demo_cancel_requests","demo_order_tables","demo_item_payment_allocations","ingredients","purchases"]){
+  for(const table of ["orders","order_items","dining_tables","payments","demo_cancel_requests","demo_order_tables","demo_item_payment_allocations","ingredients","purchases","recipes","demo_inventory_events"]){
     channel.on("postgres_changes",{event:"*",schema:"public",table,filter:"organization_id=eq."+session.organization_id},()=>sync());
   }
   channel.subscribe((status)=>{
@@ -284,6 +317,22 @@ export default function App(){
  {role==="Kitchen"&&<><label htmlFor="cancel-reason">Alasan pembatalan</label><input id="cancel-reason" value={cancelReason} maxLength={500} onChange={e=>setCancelReason(e.target.value)} placeholder="Contoh: pelanggan mengganti pesanan"/>{items.filter(i=>["preparing","ready"].includes(i.status)&&!cancelRequests.some(r=>r.order_item_id===i.id&&r.status==="pending")).map(i=><div className="kitchen-ticket" key={i.id}><span>{i.quantity}× {menus.find(m=>m.id===i.menu_item_id)?.name||"Menu"}</span><button disabled={busy||cancelReason.trim().length<4} onClick={()=>requestCancel(i.id)}>Minta persetujuan</button></div>)}</>}
  {role==="Manager"&&<><p className="feature-help">Pada demo publik, persetujuan menggunakan identitas sesi Owner yang terautentikasi. Role Switcher bukan autentikasi karyawan.</p>{cancelRequests.filter(r=>r.status==="pending").map(r=><div className="kitchen-ticket" key={r.id}><span>{menus.find(m=>m.id===items.find(i=>i.id===r.order_item_id)?.menu_item_id)?.name||"Item"} · {r.reason}</span><button disabled={busy} onClick={()=>decideCancel(r.id,true)}>Setujui</button><button disabled={busy} onClick={()=>decideCancel(r.id,false)}>Tolak</button></div>)}</>}
  {cancelRequests.filter(r=>r.status==="pending").length===0&&<p className="feature-help">Belum ada permintaan yang menunggu.</p>}</div>}
+ {(role==="Owner"||role==="Manager")&&<div className="kitchen"><h4>G2.2 · Resep, Stock Opname & Waste</h4><p className="feature-help">Setiap perubahan masuk ke audit. Pengeditan resep ditahan jika ada antrean dapur yang masih mereservasi bahannya.</p>
+ <div className="demo-grid"><div><h4>Pengelolaan resep</h4>
+ <label htmlFor="recipe-menu">Menu</label><select id="recipe-menu" value={recipeMenu} onChange={e=>setRecipeMenu(e.target.value)}><option value="">Pilih menu</option>{menus.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select>
+ <label htmlFor="recipe-ingredient">Bahan</label><select id="recipe-ingredient" value={recipeIngredient} onChange={e=>setRecipeIngredient(e.target.value)}><option value="">Pilih bahan</option>{stocks.map(x=><option key={x.id} value={x.id}>{x.name} ({x.unit})</option>)}</select>
+ <label htmlFor="recipe-qty">Kebutuhan per 1 porsi</label><input id="recipe-qty" type="number" min="0.001" step="0.001" value={recipeQty} onChange={e=>setRecipeQty(e.target.value)}/>
+ <button disabled={busy||!recipeMenu||!recipeIngredient} onClick={saveRecipe}>Simpan komponen resep</button>
+ {recipeLines.filter(x=>x.menu_item_id===recipeMenu).map(x=><div className="bill-line" key={x.id}><span>{stocks.find(i=>i.id===x.ingredient_id)?.name||"Bahan"} · {x.qty} {stocks.find(i=>i.id===x.ingredient_id)?.unit}</span><button disabled={busy} onClick={()=>removeRecipe(x.ingredient_id)}>Hapus</button></div>)}
+ </div><div><h4>Waste / Stock opname</h4>
+ <label htmlFor="stock-type">Jenis penyesuaian</label><select id="stock-type" value={stockAction} onChange={e=>{setStockAction(e.target.value);stockRequestKey.current=null;}}><option value="waste">Bahan terbuang / rusak</option><option value="opname">Stock opname (hasil hitung fisik)</option></select>
+ <label htmlFor="stock-ingredient">Bahan baku</label><select id="stock-ingredient" value={stockIngredient} onChange={e=>{setStockIngredient(e.target.value);stockRequestKey.current=null;}}><option value="">Pilih bahan</option>{stocks.map(x=><option key={x.id} value={x.id}>{x.name} · fisik {x.on_hand} · reserved {x.reserved}</option>)}</select>
+ <label htmlFor="stock-qty">{stockAction==="waste"?"Jumlah terbuang":"Jumlah fisik hasil hitung"}</label><input id="stock-qty" type="number" min="0" step="0.001" value={stockQuantity} onChange={e=>{setStockQuantity(e.target.value);stockRequestKey.current=null;}}/>
+ <label htmlFor="stock-reason">Alasan (wajib)</label><input id="stock-reason" maxLength={500} placeholder="Minimal 4 karakter" value={stockReason} onChange={e=>{setStockReason(e.target.value);stockRequestKey.current=null;}}/>
+ <button disabled={busy||!stockIngredient||!stockQuantity||stockReason.trim().length<4} onClick={updateStock}>Catat penyesuaian dummy</button>
+ </div></div>
+ <h4>Riwayat penyesuaian</h4>{inventoryEvents.length===0?<p className="feature-help">Belum ada waste atau opname.</p>:inventoryEvents.map(x=><div className="bill-line" key={x.id}><span>{stocks.find(i=>i.id===x.ingredient_id)?.name||"Bahan"} · {x.event_type==="waste"?"Waste":"Opname"} · {x.reason}</span><strong>{Number(x.quantity_change)>0?"+":""}{Number(x.quantity_change)}</strong></div>)}
+ </div>}
  {(role==="Owner"||role==="Manager")&&<div className="kitchen"><h4>G2.1 · Inventory, Purchasing & HPP</h4><p className="feature-help">Penerimaan pembelian dummy menambah stok fisik dan memperbarui harga rata-rata tertimbang. Angka HPP adalah estimasi biaya bahan berdasarkan resep saat ini, bukan laba bersih.</p>
  <div className="demo-grid"><div><h4>Terima pembelian bahan</h4>
  <label htmlFor="purchase-supplier">Supplier</label><select id="purchase-supplier" value={purchaseSupplier} onChange={e=>{setPurchaseSupplier(e.target.value);purchaseKey.current=null;}}><option value="">Tanpa supplier</option>{suppliers.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select>
@@ -299,5 +348,5 @@ export default function App(){
  <h4>Pesanan simulasi</h4><ul>{orders.map(o=><li key={o.id}>{o.id.slice(0,8)} · {rupiah(o.total)} · {o.payment_status}</li>)}</ul>
  <button disabled={busy} onClick={()=>withBusy(()=>refresh(session))}>Perbarui data</button>
  </>}</article>{error&&<p role="alert" className="error">{error}</p>}{notice&&<p role="status" className="success">{notice}</p>}
- </section><footer>SAJIVA · Tidak menerima pembayaran nyata · G2.1 · Stok, Pembelian & HPP Rata-rata · Demo</footer></main>;
+ </section><footer>SAJIVA · Tidak menerima pembayaran nyata · G2.2 · Resep, Waste & Stock Opname · Demo</footer></main>;
 }
