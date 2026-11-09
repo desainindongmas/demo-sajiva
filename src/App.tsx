@@ -8,6 +8,7 @@ type Table = {id:string;name:string;status:string};
 type Order = {id:string;total:number;payment_status:string;status:string;table_id:string|null};
 type Item = {id:string;order_id:string;menu_item_id:string;quantity:number;status:string};
 type Payment = {id:string;order_id:string;amount:number;status:string};
+type CancelRequest = {id:string;order_item_id:string;reason:string;status:string;created_at:string};
 const roles:Role[]=["Owner","Manager","Cashier","Waiter","Kitchen"];
 const url=import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const key=import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -32,6 +33,10 @@ export default function App(){
  const [orders,setOrders]=useState<Order[]>([]);
  const [items,setItems]=useState<Item[]>([]);
  const [payments,setPayments]=useState<Payment[]>([]);
+ const [cancelRequests,setCancelRequests]=useState<CancelRequest[]>([]);
+ const [moveOrderId,setMoveOrderId]=useState("");
+ const [moveTableId,setMoveTableId]=useState("");
+ const [cancelReason,setCancelReason]=useState("");
  const [quantity,setQuantity]=useState(1);
  const [channel,setChannel]=useState("dine_in");
  const [orderNotes,setOrderNotes]=useState("");
@@ -51,15 +56,16 @@ export default function App(){
  const [syncStatus,setSyncStatus]=useState("Menyiapkan koneksi...");
  async function refresh(s:Session){
   if(!client)return;
-  const [m,t,o,oi,p]=await Promise.all([
+  const [m,t,o,oi,p,cr]=await Promise.all([
    client.from("menu_items").select("id,name,price").eq("organization_id",s.organization_id).order("name"),
    client.from("dining_tables").select("id,name,status").eq("organization_id",s.organization_id).order("name"),
    client.from("orders").select("id,total,payment_status,status,table_id").eq("organization_id",s.organization_id).order("created_at",{ascending:false}),
    client.from("order_items").select("id,order_id,menu_item_id,quantity,status").eq("organization_id",s.organization_id),
-   client.from("payments").select("id,order_id,amount,status").eq("organization_id",s.organization_id)
+   client.from("payments").select("id,order_id,amount,status").eq("organization_id",s.organization_id),
+   client.from("demo_cancel_requests").select("id,order_item_id,reason,status,created_at").eq("organization_id",s.organization_id).order("created_at",{ascending:false})
   ]);
-  for(const x of [m,t,o,oi,p]) if(x.error) throw x.error;
-  setMenus((m.data||[]) as Menu[]);setTables((t.data||[]) as Table[]);setOrders((o.data||[]) as Order[]);setItems((oi.data||[]) as Item[]);setPayments((p.data||[]) as Payment[]);
+  for(const x of [m,t,o,oi,p,cr]) if(x.error) throw x.error;
+  setMenus((m.data||[]) as Menu[]);setTables((t.data||[]) as Table[]);setOrders((o.data||[]) as Order[]);setItems((oi.data||[]) as Item[]);setPayments((p.data||[]) as Payment[]);setCancelRequests((cr.data||[]) as CancelRequest[]);
  }
  async function withBusy(op:()=>Promise<void>){setBusy(true);setError("");setNotice("");try{await op()}catch(e){setError(readableError(e))}finally{setBusy(false)}}
  async function start(){await withBusy(async()=>{
@@ -109,6 +115,25 @@ export default function App(){
   if(!client||!session)throw Error("Sesi tidak tersedia");
   const result=await client.rpc("mark_demo_table_clean",{p_org:session.organization_id,p_table:tableId});
   if(result.error)throw result.error;await refresh(session);setNotice("Meja sudah tersedia.");
+ })}
+ async function moveTable(){await withBusy(async()=>{
+  if(!client||!session||!moveOrderId||!moveTableId)throw Error("Pilih pesanan dan meja tujuan.");
+  const r=await client.rpc("move_demo_order_table",{p_org:session.organization_id,p_order:moveOrderId,p_new_table:moveTableId});
+  if(r.error)throw r.error;
+  setMoveOrderId("");setMoveTableId("");await refresh(session);setNotice("Pesanan berhasil dipindahkan ke meja tujuan.");
+ })}
+ async function requestCancel(itemId:string){await withBusy(async()=>{
+  if(!client||!session)throw Error("Sesi tidak tersedia.");
+  if(cancelReason.trim().length<4)throw Error("Tuliskan alasan minimal 4 karakter.");
+  const r=await client.rpc("request_demo_item_cancellation",{p_org:session.organization_id,p_item:itemId,p_reason:cancelReason.trim()});
+  if(r.error)throw r.error;
+  setCancelReason("");await refresh(session);setNotice("Permintaan pembatalan dikirim untuk persetujuan.");
+ })}
+ async function decideCancel(requestId:string,approve:boolean){await withBusy(async()=>{
+  if(!client||!session)throw Error("Sesi tidak tersedia.");
+  const r=await client.rpc("decide_demo_item_cancellation",{p_org:session.organization_id,p_request:requestId,p_approve:approve});
+  if(r.error)throw r.error;
+  await refresh(session);setNotice(approve?"Pembatalan disetujui (simulasi).":"Pembatalan ditolak (simulasi).");
  })}
  const paid=(id:string)=>payments.filter(p=>p.order_id===id&&p.status==="simulated").reduce((sum,p)=>sum+Number(p.amount),0);
  const labels:Record<string,string>={waiting:"Menunggu",preparing:"Memasak",ready:"Siap",served:"Disajikan",available:"Tersedia",occupied:"Terisi",payment:"Menunggu bayar",cleaning:"Perlu dibersihkan"};
@@ -172,9 +197,17 @@ export default function App(){
  <label htmlFor="method">Metode</label><select id="method" value={payMethod} onChange={e=>setPayMethod(e.target.value)}><option value="cash">Tunai dummy</option><option value="qris_dummy">QRIS dummy</option><option value="transfer_dummy">Transfer dummy</option><option value="cod_dummy">COD dummy</option></select><label htmlFor="amount">Nominal simulasi (Rp)</label><input id="amount" type="number" min="1" value={payAmount} onChange={e=>setPayAmount(e.target.value)}/><button disabled={busy} onClick={payment}>Catat pembayaran dummy</button></div>}</div>}
  {(role==="Kitchen"||role==="Manager")&&<div className="kitchen"><h4>Kitchen Display · Antrean</h4>{items.filter(i=>!["served","cancelled"].includes(i.status)).length===0&&<p>Belum ada antrean</p>}{items.filter(i=>!["served","cancelled"].includes(i.status)).map(i=><div className="kitchen-ticket" key={i.id}><strong>{i.quantity}× {menus.find(m=>m.id===i.menu_item_id)?.name||"Menu"}</strong><span> · {labels[i.status]||i.status}</span><button disabled={busy} onClick={()=>kitchen(i,i.status==="waiting"?"preparing":i.status==="preparing"?"ready":"served")}>Lanjutkan status</button>{i.status==="waiting"&&<button disabled={busy} onClick={()=>kitchen(i,"cancelled")}>Batal sebelum dimasak</button>}</div>)}</div>}
  {(role==="Waiter"||role==="Cashier"||role==="Manager")&&<div className="kitchen"><h4>Status meja</h4>{tables.map(t=><div className="kitchen-ticket" key={t.id}><strong>{t.name}</strong><span> · {labels[t.status]||t.status}</span>{t.status==="cleaning"&&<button disabled={busy} onClick={()=>clean(t.id)}>Selesai dibersihkan</button>}</div>)}</div>}
+ {(role==="Waiter"||role==="Manager")&&<div className="kitchen"><h4>G1.4 · Pindah meja</h4><p className="feature-help">Memindahkan satu pesanan dine-in ke meja yang masih tersedia. Tagihan tetap pada pesanan yang sama.</p>
+ <label htmlFor="move-order">Pesanan aktif</label><select id="move-order" value={moveOrderId} onChange={e=>setMoveOrderId(e.target.value)}><option value="">Pilih pesanan</option>{orders.filter(o=>o.table_id&&!["completed","cancelled"].includes(o.status)).map(o=><option value={o.id} key={o.id}>{o.id.slice(0,8)} · {tables.find(t=>t.id===o.table_id)?.name||"Meja"}</option>)}</select>
+ <label htmlFor="move-table">Meja tujuan</label><select id="move-table" value={moveTableId} onChange={e=>setMoveTableId(e.target.value)}><option value="">Pilih meja tersedia</option>{tables.filter(t=>t.status==="available").map(t=><option value={t.id} key={t.id}>{t.name}</option>)}</select>
+ <button disabled={busy||!moveOrderId||!moveTableId} onClick={moveTable}>Pindahkan pesanan</button></div>}
+ {(role==="Kitchen"||role==="Manager")&&<div className="kitchen"><h4>G1.4 · Pembatalan dengan persetujuan</h4><p className="feature-help">Item yang sudah diproses harus melalui persetujuan manajer. Bahan yang sudah dimasak tidak otomatis dikembalikan ke stok.</p>
+ {role==="Kitchen"&&<><label htmlFor="cancel-reason">Alasan pembatalan</label><input id="cancel-reason" value={cancelReason} maxLength={500} onChange={e=>setCancelReason(e.target.value)} placeholder="Contoh: pelanggan mengganti pesanan"/>{items.filter(i=>["preparing","ready"].includes(i.status)&&!cancelRequests.some(r=>r.order_item_id===i.id&&r.status==="pending")).map(i=><div className="kitchen-ticket" key={i.id}><span>{i.quantity}× {menus.find(m=>m.id===i.menu_item_id)?.name||"Menu"}</span><button disabled={busy||cancelReason.trim().length<4} onClick={()=>requestCancel(i.id)}>Minta persetujuan</button></div>)}</>}
+ {role==="Manager"&&<><p className="feature-help">Pada demo publik, persetujuan menggunakan identitas sesi Owner yang terautentikasi. Role Switcher bukan autentikasi karyawan.</p>{cancelRequests.filter(r=>r.status==="pending").map(r=><div className="kitchen-ticket" key={r.id}><span>{menus.find(m=>m.id===items.find(i=>i.id===r.order_item_id)?.menu_item_id)?.name||"Item"} · {r.reason}</span><button disabled={busy} onClick={()=>decideCancel(r.id,true)}>Setujui</button><button disabled={busy} onClick={()=>decideCancel(r.id,false)}>Tolak</button></div>)}</>}
+ {cancelRequests.filter(r=>r.status==="pending").length===0&&<p className="feature-help">Belum ada permintaan yang menunggu.</p>}</div>}
  {(role==="Owner"||role==="Manager")&&<div className="kitchen"><h4>Ringkasan bisnis simulasi</h4><p>Pesanan: {orders.length} · Item dapur aktif: {items.filter(i=>!["served","cancelled"].includes(i.status)).length}</p><p>Pembayaran dummy diterima: {rupiah(payments.filter(p=>p.status==="simulated").reduce((s,p)=>s+Number(p.amount),0))}</p></div>}
  <h4>Pesanan simulasi</h4><ul>{orders.map(o=><li key={o.id}>{o.id.slice(0,8)} · {rupiah(o.total)} · {o.payment_status}</li>)}</ul>
  <button disabled={busy} onClick={()=>withBusy(()=>refresh(session))}>Perbarui data</button>
  </>}</article>{error&&<p role="alert" className="error">{error}</p>}{notice&&<p role="status" className="success">{notice}</p>}
- </section><footer>SAJIVA · Tidak menerima pembayaran nyata · G1.3 · Realtime operasional · Semua pembayaran dummy</footer></main>;
+ </section><footer>SAJIVA · Tidak menerima pembayaran nyata · G1.4 · Pindah meja & approval pembatalan · Data dummy</footer></main>;
 }
