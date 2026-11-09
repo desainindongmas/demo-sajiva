@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import HCaptcha from "@hcaptcha/react-hcaptcha";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 type Role = "Owner" | "Manager" | "Cashier" | "Waiter" | "Kitchen";
 type Session = { organization_id:string;branch_id:string;session_id:string;share_code:string };
@@ -8,6 +9,7 @@ type Order = {id:string;total:number;payment_status:string;status:string};
 const roles:Role[]=["Owner","Manager","Cashier","Waiter","Kitchen"];
 const url=import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const key=import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+const hcaptchaSitekey=import.meta.env.VITE_HCAPTCHA_SITEKEY as string | undefined;
 const client:SupabaseClient | null = url && key ? createClient(url,key) : null;
 const rupiah=(n:number)=>new Intl.NumberFormat("id-ID",{style:"currency",currency:"IDR",maximumFractionDigits:0}).format(n);
 export default function App(){
@@ -23,6 +25,8 @@ export default function App(){
  const [selectedTable,setSelectedTable]=useState("");
  const [payOrder,setPayOrder]=useState("");
  const [payAmount,setPayAmount]=useState("");
+ const [captchaToken,setCaptchaToken]=useState<string|null>(null);
+ const captchaRef=useRef<HCaptcha>(null);
  async function refresh(s:Session){
   if(!client)return;
   const [m,t,o]=await Promise.all([
@@ -37,7 +41,14 @@ export default function App(){
  async function start(){await withBusy(async()=>{
    if(!client)throw Error("Konfigurasi Supabase belum diisi pada environment Cloudflare atau .env.local.");
    const {data:userInfo}=await client.auth.getUser();
-   if(!userInfo.user){const auth=await client.auth.signInAnonymously();if(auth.error)throw auth.error;}
+   if(!userInfo.user){
+     if(!hcaptchaSitekey) throw Error("hCaptcha Sitekey belum dikonfigurasi.");
+     if(!captchaToken) throw Error("Selesaikan hCaptcha terlebih dahulu.");
+     const auth=await client.auth.signInAnonymously({options:{captchaToken}});
+     setCaptchaToken(null);
+     captchaRef.current?.resetCaptcha();
+     if(auth.error)throw auth.error;
+   }
    const r=await client.rpc("start_demo");if(r.error)throw r.error;
    const s=r.data as Session;setSession(s);await refresh(s);setNotice("Sesi simulasi dibuat. Seluruh data bersifat dummy.");
  })}
@@ -57,7 +68,7 @@ export default function App(){
  <section className="hero"><p>Restaurant Operations Management</p><h1>Satu Sistem, Semua Terkendali.</h1><p>Simulasi operasional restoran. Tidak ada uang sungguhan yang diproses.</p></section>
  <section><h2>Ruang Demo</h2><p>Pilih peran publik untuk melihat alur simulasi.</p>
  <div className="roles">{roles.map(r=><button type="button" key={r} className={role===r?"active":""} onClick={()=>setRole(r)}>{r}</button>)}</div>
- <article><h3>{role}</h3>{!session?<><p>Buat sesi untuk mencoba data simulasi yang terisolasi.</p><button type="button" disabled={busy} onClick={start}>{busy?"Menyiapkan...":"Buat sesi demo"}</button></>:<>
+ <article><h3>{role}</h3>{!session?<><p>Buat sesi untuk mencoba data simulasi yang terisolasi.</p>{hcaptchaSitekey && <div className="captcha-area"><HCaptcha ref={captchaRef} sitekey={hcaptchaSitekey} onVerify={(token)=>setCaptchaToken(token)} onExpire={()=>setCaptchaToken(null)} onError={()=>setCaptchaToken(null)}/></div>}<button type="button" disabled={busy || (!captchaToken && !session)} onClick={start}>{busy?"Menyiapkan...":"Buat sesi demo"}</button></>:<>
  <p>Session: <code>{session.share_code}</code> · Dataset hanya untuk simulasi.</p>
  <div className="demo-grid"><div><h4>Menu & pesanan</h4>
  <label htmlFor="menu">Menu</label><select id="menu" value={selectedMenu} onChange={e=>setSelectedMenu(e.target.value)}><option value="">Pilih menu</option>{menus.map(m=><option key={m.id} value={m.id}>{m.name} · {rupiah(m.price)}</option>)}</select>
