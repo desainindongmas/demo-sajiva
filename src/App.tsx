@@ -10,6 +10,7 @@ type Item = {id:string;order_id:string;menu_item_id:string;quantity:number;unit_
 type Payment = {id:string;order_id:string;amount:number;status:string};
 type CancelRequest = {id:string;order_item_id:string;reason:string;status:string;created_at:string};
 type JoinedTable = {id:string;order_id:string;table_id:string};
+type ItemAllocation = {id:string;order_id:string;order_item_id:string;quantity:number;amount:number;payment_id:string};
 const roles:Role[]=["Owner","Manager","Cashier","Waiter","Kitchen"];
 const url=import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const key=import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -39,6 +40,12 @@ export default function App(){
  const [joinOrderId,setJoinOrderId]=useState("");
  const [joinTableId,setJoinTableId]=useState("");
  const [billOrderId,setBillOrderId]=useState("");
+ const [allocations,setAllocations]=useState<ItemAllocation[]>([]);
+ const [splitOrderId,setSplitOrderId]=useState("");
+ const [splitItemId,setSplitItemId]=useState("");
+ const [splitQty,setSplitQty]=useState(1);
+ const [splitMethod,setSplitMethod]=useState("cash");
+ const splitRequestKey=useRef<string|null>(null);
  const [moveOrderId,setMoveOrderId]=useState("");
  const [moveTableId,setMoveTableId]=useState("");
  const [cancelReason,setCancelReason]=useState("");
@@ -61,17 +68,18 @@ export default function App(){
  const [syncStatus,setSyncStatus]=useState("Menyiapkan koneksi...");
  async function refresh(s:Session){
   if(!client)return;
-  const [m,t,o,oi,p,cr,jt]=await Promise.all([
+  const [m,t,o,oi,p,cr,jt,al]=await Promise.all([
    client.from("menu_items").select("id,name,price").eq("organization_id",s.organization_id).order("name"),
    client.from("dining_tables").select("id,name,status").eq("organization_id",s.organization_id).order("name"),
    client.from("orders").select("id,total,payment_status,status,table_id").eq("organization_id",s.organization_id).order("created_at",{ascending:false}),
    client.from("order_items").select("id,order_id,menu_item_id,quantity,unit_price,status").eq("organization_id",s.organization_id),
    client.from("payments").select("id,order_id,amount,status").eq("organization_id",s.organization_id),
    client.from("demo_cancel_requests").select("id,order_item_id,reason,status,created_at").eq("organization_id",s.organization_id).order("created_at",{ascending:false}),
-   client.from("demo_order_tables").select("id,order_id,table_id").eq("organization_id",s.organization_id)
+   client.from("demo_order_tables").select("id,order_id,table_id").eq("organization_id",s.organization_id),
+   client.from("demo_item_payment_allocations").select("id,order_id,order_item_id,quantity,amount,payment_id").eq("organization_id",s.organization_id)
   ]);
-  for(const x of [m,t,o,oi,p,cr,jt]) if(x.error) throw x.error;
-  setMenus((m.data||[]) as Menu[]);setTables((t.data||[]) as Table[]);setOrders((o.data||[]) as Order[]);setItems((oi.data||[]) as Item[]);setPayments((p.data||[]) as Payment[]);setCancelRequests((cr.data||[]) as CancelRequest[]);setJoinedTables((jt.data||[]) as JoinedTable[]);
+  for(const x of [m,t,o,oi,p,cr,jt,al]) if(x.error) throw x.error;
+  setMenus((m.data||[]) as Menu[]);setTables((t.data||[]) as Table[]);setOrders((o.data||[]) as Order[]);setItems((oi.data||[]) as Item[]);setPayments((p.data||[]) as Payment[]);setCancelRequests((cr.data||[]) as CancelRequest[]);setJoinedTables((jt.data||[]) as JoinedTable[]);setAllocations((al.data||[]) as ItemAllocation[]);
  }
  async function withBusy(op:()=>Promise<void>){setBusy(true);setError("");setNotice("");try{await op()}catch(e){setError(readableError(e))}finally{setBusy(false)}}
  async function start(){await withBusy(async()=>{
@@ -121,6 +129,15 @@ export default function App(){
   if(!client||!session)throw Error("Sesi tidak tersedia");
   const result=await client.rpc("mark_demo_table_clean",{p_org:session.organization_id,p_table:tableId});
   if(result.error)throw result.error;await refresh(session);setNotice("Meja sudah tersedia.");
+ })}
+ async function paySplitItem(){await withBusy(async()=>{
+   if(!client||!session||!splitOrderId||!splitItemId)throw Error("Pilih tagihan dan item.");
+   if(!Number.isInteger(splitQty)||splitQty<1)throw Error("Jumlah porsi pembayaran tidak valid.");
+   if(!splitRequestKey.current)splitRequestKey.current=crypto.randomUUID();
+   const r=await client.rpc("pay_demo_order_items",{p_org:session.organization_id,p_order:splitOrderId,p_item:splitItemId,p_qty:splitQty,p_method:splitMethod,p_request_key:splitRequestKey.current});
+   if(r.error)throw r.error;
+   splitRequestKey.current=null;setSplitItemId("");setSplitQty(1);
+   await refresh(session);setNotice("Pembayaran item berhasil dicatat (dummy).");
  })}
  async function joinTable(){await withBusy(async()=>{
   if(!client||!session||!joinOrderId||!joinTableId)throw Error("Pilih tagihan induk dan meja tambahan.");
@@ -178,7 +195,7 @@ export default function App(){
     refresh(session).catch(e=>{if(active)setError(readableError(e));}).finally(()=>{refreshPending=false;});
   };
   const channel=supabase.channel("sajiva-operations-"+session.organization_id);
-  for(const table of ["orders","order_items","dining_tables","payments","demo_cancel_requests","demo_order_tables"]){
+  for(const table of ["orders","order_items","dining_tables","payments","demo_cancel_requests","demo_order_tables","demo_item_payment_allocations"]){
     channel.on("postgres_changes",{event:"*",schema:"public",table,filter:"organization_id=eq."+session.organization_id},()=>sync());
   }
   channel.subscribe((status)=>{
@@ -215,6 +232,15 @@ export default function App(){
  <button disabled={busy||!joinOrderId||!joinTableId} onClick={joinTable}>Gabungkan meja pada tagihan</button>
  {joinedTables.filter(x=>x.order_id===joinOrderId).length>0&&<p className="feature-help">Meja gabungan: {joinedTables.filter(x=>x.order_id===joinOrderId).map(x=>tables.find(t=>t.id===x.table_id)?.name).join(", ")}</p>}
  </div>}
+ {(role==="Cashier"||role==="Manager")&&<div className="kitchen bill-panel"><h4>G1.6 · Split Bill berdasarkan item/porsi</h4>
+ <p className="feature-help">Bayar satu atau beberapa porsi secara terpisah. Semua pembayaran tetap tercatat pada satu tagihan utama. Hanya berlaku untuk pesanan yang belum memiliki pembayaran umum dan tanpa pajak/diskon tingkat order.</p>
+ <label htmlFor="split-order">Tagihan belum lunas</label><select id="split-order" value={splitOrderId} onChange={e=>{setSplitOrderId(e.target.value);setSplitItemId("");splitRequestKey.current=null;}}><option value="">Pilih pesanan</option>{orders.filter(o=>!["cancelled","completed"].includes(o.status)&&o.payment_status!=="paid"&&(!payments.some(p=>p.order_id===o.id)||allocations.some(a=>a.order_id===o.id))).map(o=><option key={o.id} value={o.id}>#{o.id.slice(0,8)} · Sisa {rupiah(Number(o.total)-paid(o.id))}</option>)}</select>
+ <label htmlFor="split-item">Item yang akan dibayar</label><select id="split-item" value={splitItemId} onChange={e=>{setSplitItemId(e.target.value);setSplitQty(1);splitRequestKey.current=null;}}><option value="">Pilih item</option>{items.filter(i=>i.order_id===splitOrderId&&i.status!=="cancelled"&&i.quantity>allocations.filter(a=>a.order_item_id===i.id).reduce((n,a)=>n+a.quantity,0)).map(i=><option key={i.id} value={i.id}>{menus.find(m=>m.id===i.menu_item_id)?.name||"Menu"} · {i.quantity-allocations.filter(a=>a.order_item_id===i.id).reduce((n,a)=>n+a.quantity,0)} porsi tersedia</option>)}</select>
+ <label htmlFor="split-qty">Jumlah porsi</label><input id="split-qty" type="number" min="1" max={Math.max(1,(items.find(i=>i.id===splitItemId)?.quantity||1)-allocations.filter(a=>a.order_item_id===splitItemId).reduce((n,a)=>n+a.quantity,0))} value={splitQty} onChange={e=>{setSplitQty(Number(e.target.value));splitRequestKey.current=null;}}/>
+ <label htmlFor="split-method">Metode pembayaran dummy</label><select id="split-method" value={splitMethod} onChange={e=>{setSplitMethod(e.target.value);splitRequestKey.current=null;}}><option value="cash">Tunai</option><option value="qris_dummy">QRIS</option><option value="transfer_dummy">Transfer</option><option value="cod_dummy">COD</option></select>
+ {splitItemId&&<p className="feature-help">Nominal otomatis: <strong>{rupiah(Number(items.find(i=>i.id===splitItemId)?.unit_price||0)*splitQty)}</strong></p>}
+ <button disabled={busy||!splitOrderId||!splitItemId||splitQty<1||!Number.isInteger(splitQty)||splitQty>(items.find(i=>i.id===splitItemId)?.quantity||0)-allocations.filter(a=>a.order_item_id===splitItemId).reduce((n,a)=>n+a.quantity,0)} onClick={paySplitItem}>Catat pembayaran item dummy</button>
+ </div>}
  {(role==="Cashier"||role==="Manager"||role==="Owner")&&<div className="kitchen bill-panel"><h4>G1.5 · Rincian tagihan simulasi</h4>
  <label htmlFor="bill-order">Nomor pesanan / tagihan</label><select id="bill-order" value={billOrderId} onChange={e=>setBillOrderId(e.target.value)}><option value="">Pilih tagihan</option>{orders.map(o=><option key={o.id} value={o.id}>#{o.id.slice(0,8)} · {rupiah(Number(o.total))}</option>)}</select>
  {orders.filter(o=>o.id===billOrderId).map(o=><div className="bill-details" key={o.id}>
@@ -237,5 +263,5 @@ export default function App(){
  <h4>Pesanan simulasi</h4><ul>{orders.map(o=><li key={o.id}>{o.id.slice(0,8)} · {rupiah(o.total)} · {o.payment_status}</li>)}</ul>
  <button disabled={busy} onClick={()=>withBusy(()=>refresh(session))}>Perbarui data</button>
  </>}</article>{error&&<p role="alert" className="error">{error}</p>}{notice&&<p role="status" className="success">{notice}</p>}
- </section><footer>SAJIVA · Tidak menerima pembayaran nyata · G1.5 · Gabung meja & rincian tagihan · Data dummy</footer></main>;
+ </section><footer>SAJIVA · Tidak menerima pembayaran nyata · G1.6 · Split bill item & pembayaran dummy</footer></main>;
 }
