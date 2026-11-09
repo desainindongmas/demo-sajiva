@@ -194,7 +194,7 @@ export default function App(){
   if(!client||!session)throw Error("Sesi demo tidak aktif.");
   if(!expenseDescription.trim()||Number(expenseAmount)<=0)throw Error("Isi deskripsi dan nominal biaya.");
   if(!expenseKey.current)expenseKey.current=crypto.randomUUID();
-  const r=await client.rpc("record_demo_operating_expense",{p_org:session.organization_id,p_branch:session.branch_id,p_category:expenseCategory,p_description:expenseDescription,p_amount:Number(expenseAmount),p_expense_date:new Date().toISOString().slice(0,10),p_key:expenseKey.current});
+  const r=await client.rpc("record_demo_operating_expense",{p_org:session.organization_id,p_branch:session.branch_id,p_category:expenseCategory,p_description:expenseDescription,p_amount:Number(expenseAmount),p_expense_date:new Date().toLocaleDateString("sv-SE",{timeZone:"Asia/Jakarta"}),p_key:expenseKey.current});
   if(r.error)throw r.error;expenseKey.current=null;setExpenseDescription("");await refresh(session);setNotice("Biaya operasional dummy berhasil dicatat.");
  })}
  async function createSku(){await withBusy(async()=>{
