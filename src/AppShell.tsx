@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { BarChart3, BookOpen, ChefHat, ChevronLeft, ChevronRight, ClipboardList, CreditCard, LayoutDashboard, Menu, Moon, Package, PanelLeftClose, PanelLeftOpen, ReceiptText, Settings2, ShieldCheck, Sun, Table2, X } from "lucide-react";
+import { BarChart3, BookOpen, ChefHat, ClipboardList, CreditCard, LayoutDashboard, Menu, Moon, Package, PanelLeftClose, PanelLeftOpen, RefreshCw, Settings2, ShieldCheck, Sun, Table2, X } from "lucide-react";
 
 export type AppView = "overview"|"pos"|"kitchen"|"tables"|"billing"|"inventory"|"recipes"|"production"|"finance"|"guided";
 export type RoleName = "Owner"|"Manager"|"Cashier"|"Waiter"|"Kitchen";
@@ -56,7 +56,8 @@ export function AppShell(p:Props){
        </div>
        <div className="topbar-right">
          <span className={"connection-chip "+(p.hasSession?"connected":"")}><span className="connection-dot"/><span>{p.hasSession?p.syncing:"Sesi demo"}</span></span>
-         <label className="role-switch-label"><span>Mode peran</span><select aria-label="Pilih peran demo" value={p.role} onChange={e=>p.setRole(e.target.value as RoleName)}>{(Object.keys(roleLabels) as RoleName[]).map(r=><option key={r} value={r}>{roleLabels[r]}</option>)}</select></label>
+         <label className="role-switch-label"><span>Mode peran</span><select aria-label="Pilih peran demo" value={p.role} onChange={e=>{const next=e.target.value as RoleName;p.setRole(next);p.setView(next==="Kitchen"?"kitchen":next==="Cashier"?"billing":next==="Waiter"?"pos":next==="Manager"?"tables":"overview");}}>{(Object.keys(roleLabels) as RoleName[]).map(r=><option key={r} value={r}>{roleLabels[r]}</option>)}</select></label>
+         <button type="button" className="icon-button refresh-button" disabled={!p.hasSession||p.busy} onClick={p.onRefresh} title="Sinkronkan data" aria-label="Sinkronkan data"><RefreshCw size={18}/></button>
          <button type="button" className="icon-button theme-toggle" onClick={p.toggleTheme} title={p.theme==="light"?"Gunakan mode gelap":"Gunakan mode terang"} aria-label="Ganti tema">{p.theme==="light"?<Moon size={20}/>:<Sun size={20}/>}</button>
        </div>
      </header>
