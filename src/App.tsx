@@ -49,6 +49,7 @@ export default function App(){
  const [mobileOpen,setMobileOpen]=useState(false);
  const toggleTheme=()=>setTheme(v=>v==="light"?"dark":"light");
  useEffect(()=>{try{localStorage.setItem("sajiva-theme",theme)}catch{/* private browsing */}},[theme]);
+ useEffect(()=>{document.querySelector('meta[name="theme-color"]')?.setAttribute("content",theme==="dark"?"#101b18":"#f5f7f6");},[theme]);
 
  const [session,setSession]=useState<Session|null>(null);
  const [menus,setMenus]=useState<Menu[]>([]);
