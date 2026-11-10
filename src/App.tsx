@@ -401,7 +401,7 @@ export default function App(){
  </>}
  <section className="workspace"><article>{!session?<><p>Buat sesi untuk mencoba data simulasi yang terisolasi.</p>{hcaptchaSitekey && <div className="captcha-area"><HCaptcha ref={captchaRef} sitekey={hcaptchaSitekey} onVerify={(token)=>setCaptchaToken(token)} onExpire={()=>setCaptchaToken(null)} onError={(err)=>{setCaptchaToken(null);setError("hCaptcha gagal: "+readableError(err))}}/></div>}<button type="button" disabled={busy || !captchaToken} onClick={start}>{busy?"Menyiapkan...":"Buat sesi demo"}</button></>:<>
  <p className="session-status">Sesi demo <code>{session.share_code}</code> · Data dummy <span className="sync-status" role="status">{syncStatus}</span></p>
- {(role==="Waiter"||role==="Cashier"||role==="Manager")&&<div className="demo-grid view-panel" data-module="pos" data-active={view==="pos"||view==="billing"}><div className="view-panel" data-module="pos" data-active={view==="pos"}><h4>Pesanan · Dine-in / Takeaway / Delivery</h4><p className="feature-help">Pilih jenis pesanan, isi catatan, atau tambah menu ke pesanan yang belum dibayar.</p>
+ {(role==="Waiter"||role==="Cashier"||role==="Manager")&&<div className="demo-grid view-panel" data-module="pos" data-active={view==="pos"||view==="billing"}><div className="view-panel" data-module="pos" data-active={view==="pos"}><h4>Pesanan · Dine-in / Takeaway / Delivery</h4><p className="feature-help">Susun beberapa menu dalam keranjang, pilih kanal dan meja, lalu simpan dalam satu langkah.</p>
  <div className="cart-layout">
  <div><label htmlFor="menu-search">Cari dan pilih menu (bisa lebih dari satu)</label><input id="menu-search" value={menuSearch} onChange={e=>setMenuSearch(e.target.value)} placeholder="Cari nama menu..."/>
  <div className="menu-pick-list">{menus.filter(m=>m.name.toLowerCase().includes(menuSearch.toLowerCase())).map(m=><button type="button" key={m.id} className="menu-pick" onClick={()=>addCart(m.id)}><strong>{m.name}</strong><small>{rupiah(Number(m.price))} · Tambah +</small></button>)}</div>
@@ -478,7 +478,7 @@ export default function App(){
  </div>}
  {(role==="Owner"||role==="Manager")&&<div className="kitchen view-panel" data-module="recipes" data-active={view==="recipes"}><h4>G2.2 · Resep, Stock Opname & Waste</h4><p className="feature-help">Setiap perubahan masuk ke audit. Pengeditan resep ditahan jika ada antrean dapur yang masih mereservasi bahannya.</p>
  <div className="demo-grid"><div><h4>Pengelolaan resep</h4>
- <label htmlFor="recipe-menu">Menu</label><select id="recipe-menu" value={recipeMenu} onChange={e=>setRecipeMenu(e.target.value)}><option value="">Pilih menu</option>{menus.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select>
+ <label htmlFor="recipe-menu">Menu</label><select id="recipe-menu" value={recipeMenu} onChange={e=>{setRecipeMenu(e.target.value);setRecipeBatch([]);}}><option value="">Pilih menu</option>{menus.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select>
  <label htmlFor="recipe-ingredient">Bahan</label><select id="recipe-ingredient" value={recipeIngredient} onChange={e=>setRecipeIngredient(e.target.value)}><option value="">Pilih bahan</option>{stocks.map(x=><option key={x.id} value={x.id}>{x.name} ({x.unit})</option>)}</select>
  <label htmlFor="recipe-qty">Kebutuhan per 1 porsi</label><input id="recipe-qty" type="number" min="0.001" step="0.001" value={recipeQty} onChange={e=>setRecipeQty(e.target.value)}/>
  <button disabled={busy||!recipeMenu||!recipeIngredient} onClick={addRecipeLine}>+ Tambah ke daftar resep</button>
