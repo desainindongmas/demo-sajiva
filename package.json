@@ -15,7 +15,8 @@
     "vite": "^6.3.0",
     "@vitejs/plugin-react": "^4.7.0",
     "@supabase/supabase-js": "^2.57.0",
-    "@hcaptcha/react-hcaptcha": "^1.14.1"
+    "@hcaptcha/react-hcaptcha": "^1.14.1",
+    "lucide-react": "^0.468.0"
   },
   "devDependencies": {
     "typescript": "~5.8.3",
