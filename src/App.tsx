@@ -116,6 +116,11 @@ export default function App(){
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
+ const [cart,setCart]=useState<Record<string,number>>({});
+ const [menuSearch,setMenuSearch]=useState("");
+ const [purchaseLines,setPurchaseLines]=useState<{ingredient_id:string;quantity:number;unit_cost:number}[]>([]);
+ const [inventoryBatch,setInventoryBatch]=useState<{ingredient_id:string;type:string;quantity:number;reason:string;request_key:string}[]>([]);
+ const [recipeBatch,setRecipeBatch]=useState<{ingredient_id:string;quantity:number}[]>([]);
  const [selectedMenu,setSelectedMenu]=useState("");
  const [selectedTable,setSelectedTable]=useState("");
  const [payOrder,setPayOrder]=useState("");
@@ -167,13 +172,52 @@ export default function App(){
    const r=await client.rpc("start_demo");if(r.error)throw r.error;
    const s=r.data as Session;setSession(s);sessionStorage.setItem("sajiva_demo_session",JSON.stringify(s));await refresh(s);setNotice("Sesi simulasi dibuat. Seluruh data bersifat dummy.");
  })}
+ function addCart(menuId:string,delta:number=1){
+  orderRequestKey.current=null;
+  setCart(prev=>{const updated={...prev};const qty=Math.max(0,Math.min(50,(updated[menuId]||0)+delta));if(qty===0)delete updated[menuId];else updated[menuId]=qty;return updated;});
+ }
+ function addPurchaseLine(){
+  const qty=Number(purchaseQty),cost=Number(purchaseUnitCost);
+  if(!purchaseIngredient||!Number.isFinite(qty)||qty<=0||!Number.isFinite(cost)||cost<0){setError("Pilih bahan, jumlah, dan harga beli yang valid.");return;}
+  setError("");purchaseKey.current=null;
+  setPurchaseLines(prev=>[...prev.filter(x=>x.ingredient_id!==purchaseIngredient),{ingredient_id:purchaseIngredient,quantity:qty,unit_cost:cost}]);
+ }
+ function addInventoryLine(){
+  const qty=Number(stockQuantity);
+  if(!stockIngredient||!Number.isFinite(qty)||qty<0||(stockAction==="waste"&&qty<=0)||stockReason.trim().length<4){setError("Lengkapi bahan, jumlah, serta alasan minimal 4 karakter.");return;}
+  setError("");
+  setInventoryBatch(prev=>[...prev,{ingredient_id:stockIngredient,type:stockAction,quantity:qty,reason:stockReason.trim(),request_key:crypto.randomUUID()}]);
+  setStockQuantity("");setStockReason("");
+ }
+ function addRecipeLine(){
+  const qty=Number(recipeQty);
+  if(!recipeIngredient||!Number.isFinite(qty)||qty<=0){setError("Pilih bahan dan jumlah resep yang valid.");return;}
+  setError("");
+  setRecipeBatch(prev=>[...prev.filter(x=>x.ingredient_id!==recipeIngredient),{ingredient_id:recipeIngredient,quantity:qty}]);
+ }
+ async function submitInventoryBatch(){await withBusy(async()=>{
+  if(!client||!session||inventoryBatch.length===0)throw Error("Tambahkan minimal satu baris stok.");
+  const r=await client.rpc("record_demo_inventory_batch",{p_org:session.organization_id,p_lines:inventoryBatch});
+  if(r.error)throw r.error;
+  setInventoryBatch([]);await refresh(session);setNotice("Seluruh penyesuaian stok dummy tercatat dalam satu batch.");
+ })}
+ async function submitRecipeBatch(){await withBusy(async()=>{
+  if(!client||!session||!recipeMenu||recipeBatch.length===0)throw Error("Pilih menu dan isi komponen resep.");
+  const r=await client.rpc("set_demo_recipe_batch",{p_org:session.organization_id,p_menu:recipeMenu,p_lines:recipeBatch});
+  if(r.error)throw r.error;
+  setRecipeBatch([]);await refresh(session);setNotice("Seluruh komponen resep berhasil diperbarui.");
+ })}
  async function order(){await withBusy(async()=>{
-  if(!client||!session||!selectedMenu)throw Error("Pilih menu terlebih dahulu.");
+  if(!client||!session)throw Error("Sesi demo belum aktif.");
+  const cartLines=Object.entries(cart).filter(([,qty])=>qty>0).map(([menu_item_id,quantity])=>({menu_item_id,quantity}));
+  const orderLines=cartLines.length>0?cartLines:(selectedMenu?[{menu_item_id:selectedMenu,quantity}]:[]);
+  if(orderLines.length===0)throw Error("Tambahkan minimal satu menu ke keranjang.");
+  if(orderLines.length>30)throw Error("Maksimum 30 jenis menu per pesanan.");
   if(channel==="dine_in"&&!selectedTable)throw Error("Untuk dine-in, pilih meja terlebih dahulu.");
-  if(!Number.isInteger(quantity)||quantity<1||quantity>50)throw Error("Jumlah porsi harus 1 sampai 50.");
+  if(orderLines.some(x=>!Number.isInteger(x.quantity)||x.quantity<1||x.quantity>50))throw Error("Jumlah setiap menu harus 1–50 porsi.");
   if(!orderRequestKey.current)orderRequestKey.current=crypto.randomUUID();
-  const r=await client.rpc("create_demo_order_v2",{p_org:session.organization_id,p_branch:session.branch_id,p_table:channel==="dine_in"?selectedTable:null,p_channel:channel,p_notes:orderNotes,p_items:[{menu_item_id:selectedMenu,quantity}],p_request_key:orderRequestKey.current});
-  if(r.error)throw r.error;orderRequestKey.current=null;await refresh(session);setNotice("Pesanan dummy berhasil dibuat.");
+  const r=await client.rpc("create_demo_order_v2",{p_org:session.organization_id,p_branch:session.branch_id,p_table:channel==="dine_in"?selectedTable:null,p_channel:channel,p_notes:orderNotes,p_items:orderLines,p_request_key:orderRequestKey.current});
+  if(r.error)throw r.error;orderRequestKey.current=null;setCart({});setOrderNotes("");await refresh(session);setNotice("Pesanan dummy berhasil dibuat.");
  })}
  async function payment(){await withBusy(async()=>{
   if(!client||!session||!payOrder)throw Error("Pilih pesanan.");
@@ -243,12 +287,14 @@ export default function App(){
   if(r.error)throw r.error;stockRequestKey.current=null;setStockQuantity("");setStockReason("");await refresh(session);setNotice("Penyesuaian stok tercatat dalam ledger dan audit.");
  })}
  async function receivePurchase(){await withBusy(async()=>{
-  if(!client||!session||!purchaseIngredient)throw Error("Pilih bahan baku.");
+  if(!client||!session)throw Error("Sesi demo belum aktif.");
+  const receiptLines=purchaseLines.length>0?purchaseLines:(purchaseIngredient?[{ingredient_id:purchaseIngredient,quantity:Number(purchaseQty),unit_cost:Number(purchaseUnitCost)}]:[]);
+  if(receiptLines.length===0)throw Error("Tambahkan bahan baku.");
   const qty=Number(purchaseQty),cost=Number(purchaseUnitCost);
-  if(!Number.isFinite(qty)||qty<=0||!Number.isFinite(cost)||cost<0)throw Error("Jumlah dan harga beli tidak valid.");
+  if(receiptLines.some(x=>!Number.isFinite(x.quantity)||x.quantity<=0||!Number.isFinite(x.unit_cost)||x.unit_cost<0))throw Error("Jumlah dan harga beli tidak valid.");
   if(!purchaseKey.current)purchaseKey.current=crypto.randomUUID();
-  const r=await client.rpc("receive_demo_purchase",{p_org:session.organization_id,p_branch:session.branch_id,p_supplier:purchaseSupplier||null,p_lines:[{ingredient_id:purchaseIngredient,quantity:qty,unit_cost:cost}],p_request_key:purchaseKey.current});
-  if(r.error)throw r.error;purchaseKey.current=null;await refresh(session);setNotice("Pembelian bahan dummy diterima. Stok dan HPP rata-rata diperbarui.");
+  const r=await client.rpc("receive_demo_purchase",{p_org:session.organization_id,p_branch:session.branch_id,p_supplier:purchaseSupplier||null,p_lines:receiptLines,p_request_key:purchaseKey.current});
+  if(r.error)throw r.error;purchaseKey.current=null;setPurchaseLines([]);await refresh(session);setNotice("Pembelian bahan dummy diterima. Stok dan HPP rata-rata diperbarui.");
  })}
  async function paySplitItem(){await withBusy(async()=>{
    if(!client||!session||!splitOrderId||!splitItemId)throw Error("Pilih tagihan dan item.");
