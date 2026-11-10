@@ -113,6 +113,10 @@ export default function App(){
  const [orderNotes,setOrderNotes]=useState("");
  const [targetOrder,setTargetOrder]=useState("");
  const [payMethod,setPayMethod]=useState("cash");
+ const [bulkBillIds,setBulkBillIds]=useState<string[]>([]);
+ const [bulkPaymentMethod,setBulkPaymentMethod]=useState("cash");
+ const bulkPaymentKeys=useRef<Record<string,string>>({});
+
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
@@ -218,6 +222,19 @@ export default function App(){
   if(!orderRequestKey.current)orderRequestKey.current=crypto.randomUUID();
   const r=await client.rpc("create_demo_order_v2",{p_org:session.organization_id,p_branch:session.branch_id,p_table:channel==="dine_in"?selectedTable:null,p_channel:channel,p_notes:orderNotes,p_items:orderLines,p_request_key:orderRequestKey.current});
   if(r.error)throw r.error;orderRequestKey.current=null;setCart({});setOrderNotes("");await refresh(session);setNotice("Pesanan dummy berhasil dibuat.");
+ })}
+ async function paySelectedBills(){await withBusy(async()=>{
+  if(!client||!session||bulkBillIds.length===0)throw Error("Pilih tagihan terlebih dahulu.");
+  const lines=bulkBillIds.map(id=>{
+    const order=orders.find(o=>o.id===id);
+    const amount=Number(order?.total||0)-paid(id);
+    if(!Number.isFinite(amount)||amount<=0)throw Error("Salah satu tagihan sudah lunas.");
+    if(!bulkPaymentKeys.current[id])bulkPaymentKeys.current[id]=crypto.randomUUID();
+    return {order_id:id,amount,method:bulkPaymentMethod,request_key:bulkPaymentKeys.current[id]};
+  });
+  const r=await client.rpc("complete_demo_payments_batch",{p_org:session.organization_id,p_lines:lines});
+  if(r.error)throw r.error;
+  bulkPaymentKeys.current={};setBulkBillIds([]);await refresh(session);setNotice(lines.length+" tagihan dummy berhasil dilunasi dalam satu proses.");
  })}
  async function payment(){await withBusy(async()=>{
   if(!client||!session||!payOrder)throw Error("Pilih pesanan.");
@@ -402,8 +419,13 @@ export default function App(){
  <details><summary>Tambah menu ke pesanan yang sudah aktif</summary>
  <label htmlFor="add-order">Tambah menu ke pesanan yang belum dibayar</label><select id="add-order" value={targetOrder} onChange={e=>setTargetOrder(e.target.value)}><option value="">Pilih pesanan aktif</option>{orders.filter(o=>o.payment_status==="unpaid"&&!["cancelled","completed","served"].includes(o.status)).map(o=><option key={o.id} value={o.id}>{o.id.slice(0,8)} · {rupiah(Number(o.total))}</option>)}</select>
  <button disabled={busy||!selectedMenu||!targetOrder} onClick={addItem}>Tambah ke pesanan</button></details></div>
- {(role==="Cashier"||role==="Manager")&&<div className="view-panel" data-module="billing" data-active={view==="billing"}><h4>Pembayaran dummy</h4><label htmlFor="order">Pesanan</label><select id="order" value={payOrder} onChange={e=>{setPayOrder(e.target.value);paymentRequestKey.current=null;}}><option value="">Pilih pesanan</option>{orders.filter(o=>o.status!=="cancelled"&&Number(o.total)>paid(o.id)).map(o=><option key={o.id} value={o.id}>{o.id.slice(0,8)} · Sisa {rupiah(Number(o.total)-paid(o.id))}</option>)}</select>
- <label htmlFor="method">Metode</label><select id="method" value={payMethod} onChange={e=>{setPayMethod(e.target.value);paymentRequestKey.current=null;}}><option value="cash">Tunai dummy</option><option value="qris_dummy">QRIS dummy</option><option value="transfer_dummy">Transfer dummy</option><option value="cod_dummy">COD dummy</option></select><label htmlFor="amount">Nominal simulasi (Rp)</label><input id="amount" type="number" min="1" value={payAmount} onChange={e=>{setPayAmount(e.target.value);paymentRequestKey.current=null;}}/><div className="quick-actions"><button type="button" disabled={!payOrder} onClick={()=>{setPayAmount(String(Math.max(0,Number(orders.find(o=>o.id===payOrder)?.total||0)-paid(payOrder))));paymentRequestKey.current=null;}}>Bayar sisa tagihan</button><button type="button" disabled={!payOrder} onClick={()=>{setPayAmount(String(Math.ceil(Math.max(0,Number(orders.find(o=>o.id===payOrder)?.total||0)-paid(payOrder))/2)));paymentRequestKey.current=null;}}>50% sisa</button></div><button disabled={busy} onClick={payment}>Catat pembayaran dummy</button></div>}</div>}
+ {(role==="Cashier"||role==="Manager")&&<div className="view-panel" data-module="billing" data-active={view==="billing"}><h4>Pembayaran cepat</h4><p className="feature-help">Pilih beberapa tagihan yang belum lunas, kemudian catat seluruh pelunasannya dalam satu transaksi dummy. Tagihan yang memakai split per item tetap menggunakan fitur split bill.</p>
+ <div className="bulk-sheet"><h5>Tagihan belum lunas</h5>
+ {orders.filter(o=>o.status!=="cancelled"&&o.status!=="completed"&&Number(o.total)>paid(o.id)&&!allocations.some(a=>a.order_id===o.id)).map(o=><label className="bulk-bill" key={o.id}><input type="checkbox" checked={bulkBillIds.includes(o.id)} onChange={e=>{bulkPaymentKeys.current={};setBulkBillIds(prev=>e.target.checked?[...prev,o.id]:prev.filter(id=>id!==o.id))}}/><span>#{o.id.slice(0,8)}</span><strong>{rupiah(Number(o.total)-paid(o.id))}</strong></label>)}
+ <label htmlFor="bulk-pay-method">Metode pelunasan dummy</label><select id="bulk-pay-method" value={bulkPaymentMethod} onChange={e=>{setBulkPaymentMethod(e.target.value);bulkPaymentKeys.current={};}}><option value="cash">Tunai</option><option value="qris_dummy">QRIS</option><option value="transfer_dummy">Transfer</option><option value="cod_dummy">COD</option></select>
+ <button className="bulk-submit" disabled={busy||bulkBillIds.length===0} onClick={paySelectedBills}>Lunasi {bulkBillIds.length} tagihan · {rupiah(bulkBillIds.reduce((n,id)=>n+Math.max(0,Number(orders.find(o=>o.id===id)?.total||0)-paid(id)),0))}</button></div>
+ <details><summary>Bayar sebagian atau tagihan satuan</summary><h4>Pembayaran dummy</h4><label htmlFor="order">Pesanan</label><select id="order" value={payOrder} onChange={e=>{setPayOrder(e.target.value);paymentRequestKey.current=null;}}><option value="">Pilih pesanan</option>{orders.filter(o=>o.status!=="cancelled"&&Number(o.total)>paid(o.id)).map(o=><option key={o.id} value={o.id}>{o.id.slice(0,8)} · Sisa {rupiah(Number(o.total)-paid(o.id))}</option>)}</select>
+ <label htmlFor="method">Metode</label><select id="method" value={payMethod} onChange={e=>{setPayMethod(e.target.value);paymentRequestKey.current=null;}}><option value="cash">Tunai dummy</option><option value="qris_dummy">QRIS dummy</option><option value="transfer_dummy">Transfer dummy</option><option value="cod_dummy">COD dummy</option></select><label htmlFor="amount">Nominal simulasi (Rp)</label><input id="amount" type="number" min="1" value={payAmount} onChange={e=>{setPayAmount(e.target.value);paymentRequestKey.current=null;}}/><div className="quick-actions"><button type="button" disabled={!payOrder} onClick={()=>{setPayAmount(String(Math.max(0,Number(orders.find(o=>o.id===payOrder)?.total||0)-paid(payOrder))));paymentRequestKey.current=null;}}>Bayar sisa tagihan</button><button type="button" disabled={!payOrder} onClick={()=>{setPayAmount(String(Math.ceil(Math.max(0,Number(orders.find(o=>o.id===payOrder)?.total||0)-paid(payOrder))/2)));paymentRequestKey.current=null;}}>50% sisa</button></div><button disabled={busy} onClick={payment}>Catat pembayaran dummy</button></details></div>}</div>}
  {(role==="Kitchen"||role==="Manager")&&<div className="kitchen view-panel" data-module="kitchen" data-active={view==="kitchen"}><h4>Kitchen Display · Antrean</h4>{items.filter(i=>!["served","cancelled"].includes(i.status)).length===0&&<p>Belum ada antrean</p>}{items.filter(i=>!["served","cancelled"].includes(i.status)).map(i=><div className="kitchen-ticket" key={i.id}><strong>{i.quantity}× {menus.find(m=>m.id===i.menu_item_id)?.name||"Menu"}</strong><span> · {labels[i.status]||i.status}</span><button disabled={busy} onClick={()=>kitchen(i,i.status==="waiting"?"preparing":i.status==="preparing"?"ready":"served")}>Lanjutkan status</button>{i.status==="waiting"&&<button disabled={busy} onClick={()=>kitchen(i,"cancelled")}>Batal sebelum dimasak</button>}</div>)}</div>}
  {(role==="Waiter"||role==="Cashier"||role==="Manager")&&<div className="kitchen view-panel" data-module="tables" data-active={view==="tables"}><h4>Status meja</h4>{tables.map(t=><div className="kitchen-ticket" key={t.id}><strong>{t.name}</strong><span> · {labels[t.status]||t.status}</span>{t.status==="cleaning"&&<button disabled={busy} onClick={()=>clean(t.id)}>Selesai dibersihkan</button>}</div>)}</div>}
  {(role==="Waiter"||role==="Manager")&&<div className="kitchen view-panel" data-module="tables" data-active={view==="tables"}><h4>G1.5 · Gabung meja dalam satu tagihan</h4><p className="feature-help">Tambahkan meja kosong ke pesanan dine-in yang aktif. Semua meja akan memakai satu nomor tagihan. Meja yang sudah memiliki tagihan aktif belum dapat digabung pada versi ini.</p>
