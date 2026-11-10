@@ -43,7 +43,7 @@ export default function App(){
  const [role,setRole]=useState<Role>("Owner");
  const [view,setView]=useState<AppView>("overview");
  const [theme,setTheme]=useState<"light"|"dark">(()=>{
-  try { const saved=localStorage.getItem("sajiva-theme");return saved==="dark"||saved==="light"?saved:(window.matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light"); }catch{return "light";}
+  try { const saved=localStorage.getItem("sajiva-theme");return saved==="dark"?"dark":"light"; }catch{return "light";}
  });
  const [sidebarCollapsed,setSidebarCollapsed]=useState(false);
  const [mobileOpen,setMobileOpen]=useState(false);
