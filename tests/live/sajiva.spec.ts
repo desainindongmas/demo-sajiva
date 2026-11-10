@@ -1,29 +1,41 @@
-import { test, expect } from "@playwright/test";
-
-const baseURL = process.env.SAJIVA_LIVE_URL || "https://demo-sajiva.pages.dev";
-
-test("Sajiva live serves the expected G5 build and role selector", async ({ page }) => {
-  const response = await page.goto(baseURL, { waitUntil: "domcontentloaded" });
-  expect(response?.status()).toBe(200);
-  await expect(page.getByText("Versi situs: G5", { exact: false })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Waiter" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Kitchen" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Manager" })).toBeVisible();
+import {test,expect} from "@playwright/test";
+const url=process.env.SAJIVA_LIVE_URL||"https://demo-sajiva.pages.dev";
+test("Sajiva new shell, release and navigation render",async({page})=>{
+ const response=await page.goto(url,{waitUntil:"domcontentloaded"});
+ expect(response?.status()).toBe(200);
+ await expect(page.locator('meta[name="sajiva-release"]')).toHaveAttribute("content","g6-ux-responsive-20261110");
+ await expect(page.getByRole("heading",{name:"Ringkasan usaha"})).toBeVisible();
+ await expect(page.getByRole("navigation",{name:"Navigasi cepat"})).toBeHidden();
+ await expect(page.getByRole("complementary",{name:"Menu utama"})).toBeVisible();
+ await expect(page.getByRole("button",{name:"Pesanan",exact:true})).toBeVisible();
+ await expect(page.getByLabel("Pilih peran demo")).toBeVisible();
 });
-
-test("Sajiva never exposes a Super Admin role in public demo", async ({ page }) => {
-  await page.goto(baseURL);
-  await expect(page.getByRole("button", { name: "Super Admin" })).toHaveCount(0);
+test("Dark mode changes app theme and persists on reload",async({page})=>{
+ await page.goto(url);
+ await page.getByRole("button",{name:"Ganti tema"}).click();
+ await expect(page.locator(".app-layout")).toHaveAttribute("data-theme","dark");
+ await page.reload();
+ await expect(page.locator(".app-layout")).toHaveAttribute("data-theme","dark");
 });
-
-test("Sajiva role navigation renders initial role view", async ({ page }) => {
-  await page.goto(baseURL);
-  await page.getByRole("button", { name: "Waiter" }).click();
-  await expect(page.getByRole("heading", { name: "Waiter" })).toBeVisible();
-  await page.getByRole("button", { name: "Kitchen" }).click();
-  await expect(page.getByRole("heading", { name: "Kitchen" })).toBeVisible();
+test("Desktop sidebar can collapse",async({page})=>{
+ await page.setViewportSize({width:1440,height:900});
+ await page.goto(url);
+ await page.getByRole("button",{name:"Ciutkan sidebar"}).click();
+ await expect(page.locator(".app-layout")).toHaveClass(/sidebar-collapsed/);
+ await page.getByRole("button",{name:"Perluas sidebar"}).click();
+ await expect(page.locator(".app-layout")).not.toHaveClass(/sidebar-collapsed/);
 });
-
-// CAPTCHA, sign-in, payments, and real backend mutations are intentionally
-// excluded from public smoke tests. They need a dedicated authorized test
-// environment and isolated fixture credentials.
+test("Mobile layout has bottom dock and drawer",async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ await page.goto(url);
+ await expect(page.getByRole("navigation",{name:"Navigasi cepat"})).toBeVisible();
+ await page.getByRole("button",{name:"Buka menu"}).click();
+ await expect(page.getByRole("complementary",{name:"Menu utama"})).toHaveClass(/mobile-open/);
+ await page.getByRole("button",{name:"Tutup menu"}).last().click();
+ await expect(page.getByRole("complementary",{name:"Menu utama"})).not.toHaveClass(/mobile-open/);
+});
+test("No Super Admin exposed on demo",async({page})=>{
+ await page.goto(url);
+ await expect(page.getByLabel("Pilih peran demo")).not.toContainText("Super Admin");
+});
+// Transactions, hCaptcha and authorized multitenant E2E require staging credentials.
