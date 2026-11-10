@@ -33,14 +33,14 @@ jobs:
         shell: bash
         run: |
           for i in $(seq 1 30); do
-            if curl --max-time 15 -fsSL https://demo-sajiva.pages.dev/ | grep -q 'Versi situs: G5'; then
-              echo "G5 live deployment marker confirmed"
+            if curl --max-time 15 -fsSL https://demo-sajiva.pages.dev/ | grep -q 'g6-ux-responsive-20261110'; then
+              echo "G6 UX live deployment marker confirmed"
               exit 0
             fi
             echo "Waiting for Cloudflare G5 version ($i/30)"
             sleep 15
           done
-          echo "::error::Live site did not serve G5 marker after waiting"
+          echo "::error::Live site did not serve G6 UX marker after waiting"
           exit 1
       - name: Run browser smoke
         run: npx playwright test tests/live --reporter=line
