@@ -290,7 +290,6 @@ export default function App(){
   if(!client||!session)throw Error("Sesi demo belum aktif.");
   const receiptLines=purchaseLines.length>0?purchaseLines:(purchaseIngredient?[{ingredient_id:purchaseIngredient,quantity:Number(purchaseQty),unit_cost:Number(purchaseUnitCost)}]:[]);
   if(receiptLines.length===0)throw Error("Tambahkan bahan baku.");
-  const qty=Number(purchaseQty),cost=Number(purchaseUnitCost);
   if(receiptLines.some(x=>!Number.isFinite(x.quantity)||x.quantity<=0||!Number.isFinite(x.unit_cost)||x.unit_cost<0))throw Error("Jumlah dan harga beli tidak valid.");
   if(!purchaseKey.current)purchaseKey.current=crypto.randomUUID();
   const r=await client.rpc("receive_demo_purchase",{p_org:session.organization_id,p_branch:session.branch_id,p_supplier:purchaseSupplier||null,p_lines:receiptLines,p_request_key:purchaseKey.current});
@@ -395,11 +394,12 @@ export default function App(){
  <p className="feature-help">Seluruh pilihan dikirim sebagai satu pesanan.</p>
  </div></div>
  <details><summary>Tambah satu menu ke pesanan yang sudah aktif</summary>
- <label htmlFor="menu">Menu</label><select id="menu" value={selectedMenu} onChange={e=>{setSelectedMenu(e.target.value);orderRequestKey.current=null;}}><option value="">Pilih menu</option>{menus.map(m=><option key={m.id} value={m.id}>{m.name} · {rupiah(m.price)}</option>)}</select>
+ <label htmlFor="menu">Menu</label><select id="menu" value={selectedMenu} onChange={e=>{setSelectedMenu(e.target.value);orderRequestKey.current=null;}}><option value="">Pilih menu</option>{menus.map(m=><option key={m.id} value={m.id}>{m.name} · {rupiah(m.price)}</option>)}</select></details>
  <label htmlFor="channel">Jenis pesanan</label><select id="channel" value={channel} onChange={e=>{setChannel(e.target.value);setSelectedTable("");orderRequestKey.current=null;}}><option value="dine_in">Makan di tempat</option><option value="takeaway">Bungkus / Takeaway</option><option value="delivery">Pesan antar (manual)</option></select>
  {channel==="dine_in"&&<><label htmlFor="table">Meja</label><select id="table" value={selectedTable} onChange={e=>{setSelectedTable(e.target.value);orderRequestKey.current=null;}}><option value="">Pilih meja</option>{tables.filter(t=>t.status==="available"||t.status==="occupied").map(t=><option key={t.id} value={t.id}>{t.name} · {t.status}</option>)}</select></>}
  <label htmlFor="order-notes">Catatan pesanan</label><input id="order-notes" maxLength={500} value={orderNotes} placeholder="Contoh: tidak pedas" onChange={e=>{setOrderNotes(e.target.value);orderRequestKey.current=null;}}/>
  <label htmlFor="qty">Jumlah porsi</label><input id="qty" type="number" min="1" max="50" value={quantity} onChange={e=>{setQuantity(Number(e.target.value));orderRequestKey.current=null;}}/><button className="primary-action" disabled={busy||(Object.keys(cart).length===0&&!selectedMenu)||(channel==="dine_in"&&!selectedTable)} onClick={order}>Simpan pesanan · {Object.keys(cart).length||1} jenis menu</button>
+ <details><summary>Tambah menu ke pesanan yang sudah aktif</summary>
  <label htmlFor="add-order">Tambah menu ke pesanan yang belum dibayar</label><select id="add-order" value={targetOrder} onChange={e=>setTargetOrder(e.target.value)}><option value="">Pilih pesanan aktif</option>{orders.filter(o=>o.payment_status==="unpaid"&&!["cancelled","completed","served"].includes(o.status)).map(o=><option key={o.id} value={o.id}>{o.id.slice(0,8)} · {rupiah(Number(o.total))}</option>)}</select>
  <button disabled={busy||!selectedMenu||!targetOrder} onClick={addItem}>Tambah ke pesanan</button></details></div>
  {(role==="Cashier"||role==="Manager")&&<div className="view-panel" data-module="billing" data-active={view==="billing"}><h4>Pembayaran dummy</h4><label htmlFor="order">Pesanan</label><select id="order" value={payOrder} onChange={e=>{setPayOrder(e.target.value);paymentRequestKey.current=null;}}><option value="">Pilih pesanan</option>{orders.filter(o=>o.status!=="cancelled"&&Number(o.total)>paid(o.id)).map(o=><option key={o.id} value={o.id}>{o.id.slice(0,8)} · Sisa {rupiah(Number(o.total)-paid(o.id))}</option>)}</select>
